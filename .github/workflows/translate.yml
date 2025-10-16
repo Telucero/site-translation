@@ -1,0 +1,78 @@
+name: Translate Documentation
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  TARGET_LANGUAGES: es fr
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    if: github.repository_owner != 'dependabot[bot]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Collect English documentation changes
+        id: changes
+        run: |
+          BASE="${{ github.event.before }}"
+          HEAD="${{ github.sha }}"
+          if [ "$BASE" = "0000000000000000000000000000000000000000" ] || [ -z "$BASE" ]; then
+            BASE=$(git rev-list --max-parents=0 "$HEAD")
+          fi
+
+          git diff --name-only "$BASE" "$HEAD" -- 'docs/en/**/*.md' > english_changes.txt || true
+          CHANGED_COUNT=$(grep -c '[^[:space:]]' english_changes.txt || true)
+
+          echo "count=$CHANGED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "files<<'EOF'" >> "$GITHUB_OUTPUT"
+          cat english_changes.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Request translations via n8n
+        if: steps.changes.outputs.count != '0'
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+        run: |
+          if [ -z "$N8N_WEBHOOK_URL" ]; then
+            echo "Missing N8N_WEBHOOK_URL secret" >&2
+            exit 1
+          fi
+          FILE_ARGS=$(tr '\n' ' ' < english_changes.txt)
+          python scripts/request_translation.py $FILE_ARGS \
+            --webhook-url "$N8N_WEBHOOK_URL" \
+            --languages ${{ env.TARGET_LANGUAGES }} \
+            --default-language en \
+            --branch "${{ github.ref }}" \
+            --commit "${{ github.sha }}"
+
+      - name: Build MkDocs site
+        run: mkdocs build
+
+      - name: Commit localized updates
+        if: steps.changes.outputs.count != '0'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update localized docs"
+          branch: ${{ github.ref_name }}

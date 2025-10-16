@@ -1,0 +1,21 @@
+{
+  "product": "DocumentationSite",
+  "terms": [
+    {
+      "source": "Documentation Site",
+      "target": {
+        "es": "Sitio de documentación",
+        "fr": "Site de documentation"
+      },
+      "notes": "Use the descriptive term for the documentation project."
+    },
+    {
+      "source": "translation pipeline",
+      "target": {
+        "es": "pipeline de traducción",
+        "fr": "pipeline de traduction"
+      },
+      "notes": "Engineering term, keep as pipeline."
+    }
+  ]
+}

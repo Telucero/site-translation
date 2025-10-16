@@ -1,0 +1,107 @@
+{
+  "name": "Multilingual MkDocs Translation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "papermoons/translate",
+        "options": {
+          "responseData": "lastNode"
+        }
+      },
+      "id": "Webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const documents = items[0].json.documents;\nconst targets = items[0].json.target_languages;\nconst jobs = [];\nfor (const doc of documents) {\n  for (const lang of targets) {\n    jobs.push({\n      json: {\n        source_path: doc.path,\n        source_language: items[0].json.default_language,\n        target_language: lang,\n        content: doc.content,\n        checksum: doc.checksum\n      }\n    });\n  }\n}\nreturn jobs;"
+      },
+      "name": "Prepare Jobs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.example.com/translate",
+        "options": {
+          "bodyContentType": "json"
+        }
+      },
+      "name": "Translate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const grouped = {};\nfor (const item of items) {\n  const locale = item.json.target_language;\n  const translatedPath = item.json.source_path.replace('/en/', `/${locale}/`);\n  if (!grouped[locale]) {\n    grouped[locale] = [];\n  }\n  grouped[locale].push({\n    language: locale,\n    path: translatedPath,\n    content: item.json.translated || item.json.content\n  });\n}\nreturn [{ json: { translations: Object.values(grouped).flat() } }];"
+      },
+      "name": "Assemble Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1320, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Jobs": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Translate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translate": {
+      "main": [
+        [
+          {
+            "node": "Assemble Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  ],
+  "active": false,
+  "settings": {},
+  "staticData": null,
+  "id": "papermoons-mkdocs-translation"
+}

@@ -1,0 +1,71 @@
+site_name: Multilingual Docs (Demo)
+site_url: https://example.com
+site_description: Demo MkDocs project showcasing automated translations via GitHub Actions and n8n.
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Guides:
+      - Getting Started: guides/getting-started.md
+      - Translation Workflow: guides/translation-flow.md
+  - Reference:
+      - API Overview: reference/api.md
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: es
+          name: Español
+          build: true
+          nav_translations:
+            Home: Inicio
+            Guides: Guías
+            Getting Started: Primeros Pasos
+            Translation Workflow: Flujo de Traducción
+            Reference: Referencia
+            API Overview: Descripción de la API
+        - locale: fr
+          name: Français
+          build: true
+          nav_translations:
+            Home: Accueil
+            Guides: Guides
+            Getting Started: Démarrage
+            Translation Workflow: Flux de Traduction
+            Reference: Référence
+            API Overview: Vue d'ensemble de l'API
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+extra:
+  alternate:
+    - name: English
+      lang: en
+      link: /
+    - name: Español
+      lang: es
+      link: /es/
+    - name: Français
+      lang: fr
+      link: /fr/
