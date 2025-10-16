@@ -42,7 +42,7 @@ jobs:
             BASE=$(git rev-list --max-parents=0 "$HEAD")
           fi
 
-          git diff --name-only "$BASE" "$HEAD" -- 'docs/en/**/*.md' > english_changes.txt || true
+          git diff --name-only "$BASE" "$HEAD" -- ':(glob)docs/en/**/*.md' > english_changes.txt || true
           CHANGED_COUNT=$(grep -c '[^[:space:]]' english_changes.txt || true)
 
           echo "count=$CHANGED_COUNT" >> "$GITHUB_OUTPUT"
