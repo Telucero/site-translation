@@ -46,7 +46,7 @@ jobs:
           CHANGED_COUNT=$(grep -c '[^[:space:]]' english_changes.txt || true)
 
           echo "count=$CHANGED_COUNT" >> "$GITHUB_OUTPUT"
-          echo "files<<'EOF'" >> "$GITHUB_OUTPUT"
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
           cat english_changes.txt >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
