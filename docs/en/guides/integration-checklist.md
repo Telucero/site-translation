@@ -35,4 +35,4 @@ Document any blockers and capture logs in the shared operations runbook.
 ## Sample Verification Steps
 
 - [ ] Confirm the translation pipeline logs contain the job ID in `provider_metadata`.
-- [ ] Compare the translated Markdown against the glossary to ensure proper terminology.
+- [ ] Compare the translated Markdown against the glossary to ensure proper terminology and tone.
