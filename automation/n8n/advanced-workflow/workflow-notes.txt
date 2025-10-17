@@ -2,7 +2,7 @@
 Advanced n8n Translation Flow
 ==============================
 
-This guide describes an opinionated n8n workflow that receives GitHub documentation updates, translates them responsibly, runs verification/formatting, and ships the localized Markdown back to GitHub. Place this workflow alongside the existing basic example; it assumes payloads like the ones sent by `.github/workflows/translate.yml`.
+This guide describes an opinionated n8n workflow that receives GitHub documentation updates, translates them responsibly, runs verification/formatting, and ships the localized Markdown back to GitHub. Place this workflow alongside the existing basic example; it assumes payloads like the ones sent by `.github/workflows/translate.yml`. The concrete example below mirrors the webhook test payload captured from production.
 
 -------------------------------------------------
 1. High-Level Node Graph (in execution order)
@@ -32,26 +32,42 @@ Each node is detailed below.
 - Method: `POST`
 - Path: `/docs/translate`
 - Respond: `When Last Node Finishes`
-- Auth: Token header (`X-Workflow-Token`)
+- Auth: Token header (`X-Workflow-Token`). In production, the GitHub Action sends a bearer-style secret; fall back to IP allow lists if desired.
 
-Expected payload shape (JSON):
+Incoming payload (abridged example from webhook test):
 
 ```
 {
-  "branch": "refs/heads/main",
-  "commit": "abc1234",
-  "default_language": "en",
-  "target_languages": ["es", "fr"],
-  "documents": [
-    {
-      "path": "docs/en/index.md",
-      "language": "en",
-      "checksum": "sha256...",
-      "content": "# Markdown..."
-    }
-  ]
+  "headers": {
+    "content-type": "application/json",
+    "user-agent": "python-requests/2.31.0",
+    "x-forwarded-for": "172.215.209.72",
+    "...": "..."
+  },
+  "body": {
+    "branch": "refs/heads/main",
+    "commit": "761456cb386c2fb40bfeec545f70607ac65ae408",
+    "default_language": "en",
+    "target_languages": ["es", "fr"],
+    "documents": [
+      {
+        "path": "docs/en/index.md",
+        "language": "en",
+        "checksum": "3b06c74...",
+        "content": "# Documentation Demo\\n..."
+      },
+      {
+        "path": "docs/en/reference/api.md",
+        "language": "en",
+        "checksum": "bafca867...",
+        "content": "# API Overview\\n..."
+      }
+    ]
+  }
 }
 ```
+
+The workflow should consistently reference `items[0].json.body` for business data and may inspect `items[0].json.headers` for additional context (IP filtering, debug logs, etc.).
 
 ------------------------------------------------------
 3. Function Node — `validatePayload`
@@ -64,7 +80,7 @@ JavaScript:
 ```javascript
 const docSchema = ["path", "language", "checksum", "content"];
 const errors = [];
-const payload = items[0].json;
+const payload = items[0].json.body || {};
 
 if (!Array.isArray(payload.documents) || payload.documents.length === 0) {
   errors.push("Missing documents array");
@@ -102,7 +118,7 @@ return items;
 4. IF Node — `translationRequired`
 ------------------------------------------------------
 
-- Expression: `{{ $json.documents.length > 0 && $json.target_languages.length > 0 }}`
+- Expression: `{{ ($json.body?.documents?.length ?? 0) > 0 && ($json.body?.target_languages?.length ?? 0) > 0 }}`
 - If false → `Respond to Webhook` with `{ "translations": [] }`.
 
 ------------------------------------------------------
@@ -118,7 +134,8 @@ Environment variables:
 JavaScript:
 
 ```javascript
-const { documents } = items[0].json;
+const payload = items[0].json.body || {};
+const { documents = [] } = payload;
 const deny = (process.env.TRANSLATION_DENYLIST || "")
   .split(",")
   .map((p) => p.trim())
@@ -144,7 +161,17 @@ if (!filtered.length) {
   throw new Error("No documents left after filter; aborting translation.");
 }
 
-return [{ json: { ...items[0].json, documents: filtered } }];
+return [
+  {
+    json: {
+      ...items[0].json,
+      body: {
+        ...payload,
+        documents: filtered
+      }
+    }
+  }
+];
 ```
 
 Install `micromatch` in n8n if not already available.
@@ -158,7 +185,7 @@ Same logic as earlier, but we add metadata for downstream verification.
 JavaScript:
 
 ```javascript
-const payload = items[0].json;
+const payload = items[0].json.body;
 const jobs = [];
 
 for (const doc of payload.documents) {
