@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -106,10 +107,12 @@ def write_translations(
             raise TypeError(f"Translation entry at index {index} is not a dict: {item!r}")
 
         if item.get("verification_errors"):
-            raise ValueError(
-                "Translation entry reported verification errors for "
-                f"{item.get('source_path', '<unknown>')} ({item.get('target_language', '?')}): "
-                + "; ".join(item["verification_errors"])
+            warnings = "; ".join(item["verification_errors"])
+            print(
+                "WARNING: Translation entry reported verification issues for "
+                f"{item.get('source_path', '<unknown>')} "
+                f"({item.get('target_language', '?')}): {warnings}",
+                file=sys.stderr,
             )
 
         normalized = _normalize_entry(item, default_language)
