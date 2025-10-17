@@ -256,9 +256,11 @@ Purpose: Normalize whitespace and ensure trailing newline.
 JavaScript:
 
 ```javascript
-return items.map((item) => {
-  const inputIndex = item.pairedItem?.item ?? 0;
-  const original = this.getInputData(0, inputIndex).json;
+const inputItems = this.getInputData();
+
+return items.map((item, index) => {
+  const sourceIndex = item.pairedItem?.item ?? index;
+  const original = inputItems[sourceIndex].json;
 
   let detected = null;
   let translationText = "";
