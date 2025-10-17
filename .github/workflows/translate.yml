@@ -55,15 +55,15 @@ jobs:
       - name: Request translations via n8n
         if: steps.changes.outputs.count != '0'
         env:
-          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          N8N_WEBHOOK_URL_TR: ${{ secrets.N8N_WEBHOOK_URL_TR }}
         run: |
-          if [ -z "$N8N_WEBHOOK_URL" ]; then
-            echo "Missing N8N_WEBHOOK_URL secret" >&2
+          if [ -z "$N8N_WEBHOOK_URL_TR" ]; then
+            echo "Missing N8N_WEBHOOK_URL_TR secret" >&2
             exit 1
           fi
           FILE_ARGS=$(tr '\n' ' ' < english_changes.txt)
           python scripts/request_translation.py $FILE_ARGS \
-            --webhook-url "$N8N_WEBHOOK_URL" \
+            --webhook-url "$N8N_WEBHOOK_URL_TR" \
             --languages ${{ env.TARGET_LANGUAGES }} \
             --default-language en \
             --branch "${{ github.ref }}" \
