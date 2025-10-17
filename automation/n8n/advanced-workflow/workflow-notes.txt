@@ -257,16 +257,47 @@ JavaScript:
 
 ```javascript
 return items.map((item) => {
-  const body = item.json.body ?? item.json;
-  const translated = body.translated_markdown
-    .replace(/\u00a0/g, " ")      // no-break spaces
+  const inputIndex = item.pairedItem?.item ?? 0;
+  const original = this.getInputData(0, inputIndex).json;
+
+  let detected = null;
+  let translationText = "";
+  const payload = item.json;
+
+  if (Array.isArray(payload)) {
+    const first = payload[0] ?? {};
+    translationText = first.text ?? "";
+    detected = first.detected_source_language ?? null;
+  } else {
+    translationText = payload?.text
+      ?? payload?.translated_markdown
+      ?? payload?.output_text
+      ?? (Array.isArray(payload?.data) ? payload.data[0]?.text : "")
+      ?? payload?.body?.translated_markdown
+      ?? payload?.body?.text
+      ?? "";
+    detected = payload?.detected_source_language
+      ?? (Array.isArray(payload?.data) ? payload.data[0]?.detected_source_language : null)
+      ?? payload?.body?.detected_source_language
+      ?? null;
+  }
+
+  if (!translationText) {
+    throw new Error("Translation provider response missing text field");
+  }
+
+  const normalized = translationText
+    .replace(/\u00a0/g, " ")
     .replace(/\r\n/g, "\n")
     .trimEnd() + "\n";
 
   return {
     json: {
-      ...item.json,
-      translated_markdown: translated
+      ...original,
+      translated_markdown: normalized,
+      provider_metadata: {
+        detected_source_language: detected
+      }
     }
   };
 });
