@@ -13,15 +13,16 @@ This guide describes an opinionated n8n workflow that receives GitHub documentat
 3. IF: `translationRequired` (optional early exit)
 4. Function: `filterFiles` (enforce allow/deny lists)
 5. Function: `prepareJobs`
-6. Split In Batches (size = 5 docs × locales, configurable)
-7. HTTP Request: `translateContent`
-8. Function: `postProcessTranslation`
-9. Function: `verifyContent`
+6. HTTP Request: `translateContent` (runs once per item)
+7. Function: `postProcessTranslation`
+8. Function: `verifyContent`
+9. IF: `hasVerificationErrors`
 10. Function: `formatMarkdown`
-11. Merge (Collect batches)
-12. HTTP Request: `commitToGitHub`
-13. Respond to Webhook
-14. (Optional) Error Workflow → Slack / Email
+11. Function: `prepareGitHubPayload`
+12. HTTP Request(s): GitHub SHA lookup + commit
+13. Function: `collectTranslations`
+14. Respond to Webhook
+15. (Optional) Error Handling path → Slack / Email
 
 Each node is detailed below.
 
@@ -207,15 +208,10 @@ for (const doc of payload.documents) {
 return jobs;
 ```
 
-------------------------------------------------------
-7. Split In Batches
-------------------------------------------------------
-
-- Batch size: 5 (adjust per provider limits)
-- Options: Pause 2 seconds between batches to respect API quotas.
+n8n automatically executes downstream nodes once per item, so a Split In Batches node is optional. Keep it only if your translation provider enforces strict rate limits; otherwise wire `prepareJobs` directly into the translation node.
 
 ------------------------------------------------------
-8. HTTP Request — `translateContent`
+7. HTTP Request — `translateContent`
 ------------------------------------------------------
 
 - Method: `POST`
