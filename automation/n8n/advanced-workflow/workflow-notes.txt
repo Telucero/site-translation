@@ -460,7 +460,8 @@ You can handle persistence in two ways:
   - The GitHub Action writes files and commits using the built-in `GITHUB_TOKEN`
     (no PAT required, respects branch protection). This keeps credentials confined
     to GitHub and satisfies policies that disallow external storage of API keys.
-  - The helper script `scripts/request_translation.py` validates each translation,
+  - The helper script `scripts/request_translation.py` validates each translation
+    If verification errors are returned, the script now logs a warning (without failing) so reviewers can inspect the translations while the pipeline continues.,
     prefers `translated_markdown`, derives the locale path from `source_path` + language
     when necessary, and fails fast if verification errors are present.
 
