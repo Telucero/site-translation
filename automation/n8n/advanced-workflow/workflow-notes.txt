@@ -450,19 +450,19 @@ Collect all batches back into a single array. Configure the Merge node with:
 
 You can handle persistence in two ways:
 
-**Option A — Respond only (recommended when you cannot store GitHub tokens in n8n)**
+- **Option A — Respond only (recommended when you cannot store GitHub tokens in n8n)**
 
-- Skip the GitHub HTTP Request nodes entirely.
-- Keep `collectTranslations` and `Respond Success` so the webhook returns
-  ```
-  { "translations": [ { "language": "...", "path": "...", "content": "..." } ] }
-  ```
-- The GitHub Action writes files and commits using the built-in `GITHUB_TOKEN`
-  (no PAT required, respects branch protection). This keeps credentials confined
-  to GitHub and satisfies policies that disallow external storage of API keys.
-- The helper script `scripts/request_translation.py` validates each translation
-  entry (`path`, `content`) before writing to disk, ensuring the Action only
-  commits well-formed updates.
+  - Skip the GitHub HTTP Request nodes entirely.
+  - Keep `collectTranslations` and `Respond Success` so the webhook returns
+    ```
+    { "translations": [ { "language": "...", "path": "...", "translated_markdown": "..." } ] }
+    ```
+  - The GitHub Action writes files and commits using the built-in `GITHUB_TOKEN`
+    (no PAT required, respects branch protection). This keeps credentials confined
+    to GitHub and satisfies policies that disallow external storage of API keys.
+  - The helper script `scripts/request_translation.py` validates each translation,
+    prefers `translated_markdown`, derives the locale path from `source_path` + language
+    when necessary, and fails fast if verification errors are present.
 
 **Option B — Commit from n8n (requires GitHub credential)**
 

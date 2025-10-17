@@ -65,8 +65,8 @@ def _normalize_entry(
     language = language_raw.lower() if isinstance(language_raw, str) else None
     path = entry.get("path") or entry.get("target_path")
     content = (
-        entry.get("content")
-        or entry.get("translated_markdown")
+        entry.get("translated_markdown")
+        or entry.get("content")
         or entry.get("markdown")
         or entry.get("text")
     )
@@ -104,6 +104,13 @@ def write_translations(
     for index, item in enumerate(translations):
         if not isinstance(item, dict):
             raise TypeError(f"Translation entry at index {index} is not a dict: {item!r}")
+
+        if item.get("verification_errors"):
+            raise ValueError(
+                "Translation entry reported verification errors for "
+                f"{item.get('source_path', '<unknown>')} ({item.get('target_language', '?')}): "
+                + "; ".join(item["verification_errors"])
+            )
 
         normalized = _normalize_entry(item, default_language)
 
