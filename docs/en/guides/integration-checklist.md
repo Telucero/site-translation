@@ -30,3 +30,9 @@ Use this checklist whenever you connect a new documentation repository to the au
 4. Run `mkdocs serve` and review `/es/` and `/fr/` pages.
 
 Document any blockers and capture logs in the shared operations runbook.
+
+
+## Sample Verification Steps
+
+- [ ] Confirm the translation pipeline logs contain the job ID in `provider_metadata`.
+- [ ] Compare the translated Markdown against the glossary to ensure proper terminology.
