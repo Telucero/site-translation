@@ -54,7 +54,16 @@ def invoke_webhook(
 
 
 def write_translations(translations: List[Dict[str, str]], repo_root: Path) -> None:
-    for item in translations:
+    required_keys = {"path", "content"}
+
+    for index, item in enumerate(translations):
+        if not isinstance(item, dict):
+            raise TypeError(f"Translation entry at index {index} is not a dict: {item!r}")
+
+        missing = required_keys - item.keys()
+        if missing:
+            raise KeyError(f"Translation entry at index {index} missing keys: {', '.join(sorted(missing))}")
+
         target_path = repo_root / item["path"]
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(item["content"], encoding="utf-8")
@@ -86,7 +95,16 @@ def main() -> None:
     }
 
     response = invoke_webhook(args.webhook_url, payload, args.timeout, args.dry_run)
-    translations = response.get("translations", [])
+
+    if isinstance(response, list):
+        translations = response
+    elif isinstance(response, dict):
+        translations = response.get("translations", [])
+    else:
+        raise TypeError(
+            f"Unexpected response type from n8n webhook: {type(response).__name__}. "
+            "Expected dict with 'translations' key or list of translation items."
+        )
 
     if translations:
         write_translations(translations, repo_root)

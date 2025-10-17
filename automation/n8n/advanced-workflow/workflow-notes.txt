@@ -412,42 +412,35 @@ Collect all batches back into a single array. Configure the Merge node with:
 - Property: default
 
 ------------------------------------------------------
-13. HTTP Request — `commitToGitHub`
+13. Ship Translations Back to GitHub
 ------------------------------------------------------
 
-Use the GitHub Contents API to create/update files in a single commit or call the Git Data API for a tree-based commit.
+You can handle persistence in two ways:
 
-Inputs needed:
-- Token with `repo` scope (store via n8n credentials).
-- Target branch: reuse `branch` from payload (`refs/heads/main` → `main`).
+**Option A — Respond only (recommended when you cannot store GitHub tokens in n8n)**
 
-Example request (one file per call, simple approach):
+- Skip the GitHub HTTP Request nodes entirely.
+- Keep `collectTranslations` and `Respond Success` so the webhook returns
+  ```
+  { "translations": [ { "language": "...", "path": "...", "content": "..." } ] }
+  ```
+- The GitHub Action writes files and commits using the built-in `GITHUB_TOKEN`
+  (no PAT required, respects branch protection). This keeps credentials confined
+  to GitHub and satisfies policies that disallow external storage of API keys.
+- The helper script `scripts/request_translation.py` validates each translation
+  entry (`path`, `content`) before writing to disk, ensuring the Action only
+  commits well-formed updates.
 
-```
-Method: PUT
-URL: https://api.github.com/repos/<org>/<repo>/contents/{{ $json.target_path }}
-Headers:
-  Authorization: Bearer {{$credentials.githubApi.token}}
-  Accept: application/vnd.github+json
-Body:
-{
-  "message": "chore: update localized docs ({{$json.target_language}})",
-  "branch": "main",
-  "content": "{{ Buffer.from($json.translated_markdown).toString('base64') }}",
-  "sha": "{{ $json.sha ?? null }}"
-}
-```
+**Option B — Commit from n8n (requires GitHub credential)**
 
-Recommended enhanced approach:
-1. Build a Git tree with all translations.
-2. Create a commit referencing the tree.
-3. Update the branch reference.
+- Retain the `getCurrentFileSHA` and `commitToGitHub` nodes, authenticating with
+  a GitHub App or scoped machine account token stored in n8n.
+- Only use this path if automation requirements mandate that n8n owns the
+  commit. Guard with checksum comparisons and retries, and consider a dry-run
+  mode.
 
-This avoids multiple commits. For brevity, choose the method that fits your automation policy.
-
-Guardrails:
-- Compare `checksum` from payload with current Git blob before write; abort if mismatched to avoid overwriting divergent content.
-- For dry runs, send results back in webhook response without writing to GitHub.
+Select the option that matches your security posture. If in doubt, use Option A
+and let the Action perform the write-back with `GITHUB_TOKEN`.
 
 ------------------------------------------------------
 14. Respond to Webhook
