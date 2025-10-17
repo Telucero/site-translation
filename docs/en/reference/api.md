@@ -35,6 +35,7 @@ The platform exposes a REST API that powers dynamic content such as release note
 ## Error Codes
 
 !!! info "Audit reference"
+    Responses include an `x-correlation-id` header that maps to n8n execution logs.
     Each API request emits a correlation ID (header `x-request-id`) which you can use to trace translation jobs across GitHub Actions and n8n logs.
 
 | Code | Meaning | Suggested Action |
