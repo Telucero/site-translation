@@ -537,3 +537,5 @@ Artifacts produced:
 - Git commit or direct file updates in the target repository.
 
 This setup balances automation with necessary oversight to keep multilingual documentation reliable. Adapt batch sizes, guardrails, and verification heuristics to match your translation provider and team workflow. 
+
+`request_translation.py` validates translation entries, logs warnings, and reports how many files were written.

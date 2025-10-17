@@ -97,10 +97,12 @@ def write_translations(
     translations: List[Dict[str, Any]],
     repo_root: Path,
     default_language: str,
-) -> None:
+) -> int:
     if not translations:
         print("No translations returned; nothing to write.")
-        return
+        return 0
+
+    written = 0
 
     for index, item in enumerate(translations):
         if not isinstance(item, dict):
@@ -120,7 +122,10 @@ def write_translations(
         target_path = repo_root / normalized["path"]
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(normalized["content"], encoding="utf-8")
+        written += 1
         print(f"Wrote translation: {normalized['path']}")
+
+    return written
 
 
 def main() -> None:
@@ -160,7 +165,8 @@ def main() -> None:
             "Expected dict with 'translations' key or list of translation items."
         )
 
-    write_translations(translations, repo_root, args.default_language)
+    written = write_translations(translations, repo_root, args.default_language)
+    print(f"Total translations written: {written}")
 
 
 if __name__ == "__main__":
