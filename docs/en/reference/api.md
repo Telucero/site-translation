@@ -12,6 +12,24 @@ The platform exposes a REST API that powers dynamic content such as release note
 - `GET /api/v1/pages/{slug}` — retrieve localized Markdown for the specified slug.
 - `POST /api/v1/pages` — create or replace localized Markdown.
 - `GET /api/v1/languages` — list active locales for the site.
+- `POST /api/v1/translation-jobs` — submit batches of Markdown fragments for asynchronous translation.
+
+### Translation Job Payload
+
+```json
+{
+  "source_language": "en",
+  "target_languages": ["es", "fr"],
+  "documents": [
+    {"path": "docs/en/index.md", "content": "..."},
+    {"path": "docs/en/reference/api.md", "content": "..."}
+  ],
+  "webhook_url": "https://automation.example.com/hooks/translation-complete"
+}
+```
+
+!!! note "Asynchronous translations"
+    The API queues each translation request and posts results to the provided webhook. Use the `GET /api/v1/translation-jobs/{id}` endpoint to poll status if a webhook is not available.
 
 ## Error Codes
 
@@ -21,6 +39,7 @@ The platform exposes a REST API that powers dynamic content such as release note
 | 401 | Unauthorized | Ensure the access token is provided and valid. |
 | 404 | Not found | Confirm the slug exists for the requested locale. |
 | 503 | Service unavailable | Retry with exponential backoff. |
+| 524 | Translation timeout | Split the batch into smaller chunks and resubmit. |
 
 !!! warning "Preview API only"
     These endpoints are sample data used to stress test translation configurations and do not represent the production contract.
