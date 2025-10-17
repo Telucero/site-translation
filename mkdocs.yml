@@ -15,6 +15,7 @@ nav:
   - Guides:
       - Getting Started: guides/getting-started.md
       - Translation Workflow: guides/translation-flow.md
+      - Localization Playbook: guides/localization-playbook.md
   - Reference:
       - API Overview: reference/api.md
 
@@ -36,6 +37,7 @@ plugins:
             Guides: Guías
             Getting Started: Primeros Pasos
             Translation Workflow: Flujo de Traducción
+            Localization Playbook: Manual de Localización
             Reference: Referencia
             API Overview: Descripción de la API
         - locale: fr
@@ -46,6 +48,7 @@ plugins:
             Guides: Guides
             Getting Started: Démarrage
             Translation Workflow: Flux de Traduction
+            Localization Playbook: Guide de Localisation
             Reference: Référence
             API Overview: Vue d'ensemble de l'API
 
