@@ -1,0 +1,582 @@
+{
+  "name": "Advanced Docs Translation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "docs/translate",
+        "options": {
+          "responseMode": "onLastNode"
+        }
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "docs-translate-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "const docSchema = [\"path\", \"language\", \"checksum\", \"content\"];\nconst errors = [];\nconst payload = items[0].json.body || {};\n\nif (!Array.isArray(payload.documents) || payload.documents.length === 0) {\n  errors.push(\"Missing documents array\");\n}\n\nif (!Array.isArray(payload.target_languages) || payload.target_languages.length === 0) {\n  errors.push(\"Missing target_languages\");\n}\n\nif (!payload.branch || !payload.commit) {\n  errors.push(\"Branch and commit metadata are required\");\n}\n\nfor (const doc of payload.documents || []) {\n  for (const key of docSchema) {\n    if (!doc[key]) {\n      errors.push(`Document ${doc.path ?? \"<unknown>\"} missing key: ${key}`);\n    }\n  }\n  if (!doc.path.startsWith(\"docs/en/\")) {\n    errors.push(`Document outside allowed scope: ${doc.path}`);\n  }\n}\n\nif (errors.length) {\n  throw new Error(`Payload validation failed: ${errors.join(\"; \")}`);\n}\n\nreturn items;"
+      },
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "mode": "expression",
+          "expression": "={{ ($json.body?.documents?.length ?? 0) > 0 && ($json.body?.target_languages?.length ?? 0) > 0 }}"
+        }
+      },
+      "name": "translationRequired",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "responseBody": "={{ { \"translations\": [] } }}",
+        "responseCode": 200
+      },
+      "name": "Respond Empty",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        840,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const payload = items[0].json.body || {};\nconst { documents = [] } = payload;\nconst deny = (process.env.TRANSLATION_DENYLIST || \"\")\n  .split(\",\")\n  .map((p) => p.trim())\n  .filter(Boolean);\nconst allow = (process.env.TRANSLATION_ALLOWLIST || \"\")\n  .split(\",\")\n  .map((p) => p.trim())\n  .filter(Boolean);\n\nconst micromatch = require(\"micromatch\");\n\nconst filtered = documents.filter((doc) => {\n  if (allow.length && !micromatch.isMatch(doc.path, allow)) {\n    return false;\n  }\n  if (deny.length && micromatch.isMatch(doc.path, deny)) {\n    return false;\n  }\n  return true;\n});\n\nif (!filtered.length) {\n  throw new Error(\"No documents left after filter; aborting translation.\");\n}\n\nreturn [\n  {\n    json: {\n      ...items[0].json,\n      body: {\n        ...payload,\n        documents: filtered\n      }\n    }\n  }\n];"
+      },
+      "name": "filterFiles",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        860,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const payload = items[0].json.body;\nconst jobs = [];\n\nfor (const doc of payload.documents) {\n  for (const locale of payload.target_languages) {\n    jobs.push({\n      json: {\n        source_path: doc.path,\n        source_language: payload.default_language,\n        target_language: locale,\n        checksum: doc.checksum,\n        content: doc.content,\n        branch: payload.branch,\n        commit: payload.commit\n      }\n    });\n  }\n}\n\nreturn jobs;"
+      },
+      "name": "prepareJobs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {
+          "pauseBetweenBatches": 2
+        }
+      },
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map(item => {\n  return {\n    json: {\n      ...item.json,\n      requestPayload: {\n        model: process.env.TRANSLATION_MODEL || \"gpt-4o-mini\",\n        input: [\n          {\n            role: \"system\",\n            content: process.env.TRANSLATION_PROMPT || \"You are a professional translator. Preserve Markdown, code fences, and placeholders.\"\n          },\n          {\n            role: \"user\",\n            content: item.json.content\n          }\n        ],\n        metadata: {\n          source_path: item.json.source_path,\n          target_language: item.json.target_language\n        }\n      }\n    }\n  };\n});"
+      },
+      "name": "prepareTranslationRequest",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.TRANSLATION_API_URL }}",
+        "method": "POST",
+        "response": "json",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 120,
+          "fullResponse": false
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.TRANSLATION_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{ $json.requestPayload }}"
+      },
+      "name": "translateContent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map((item, index) => {\n  const response = item.json;\n  const translated = (response.translated_markdown || response.body?.translated_markdown || response.output_text || \"\")\n    .replace(/\\u00a0/g, \" \")\n    .replace(/\\r\\n/g, \"\\n\")\n    .trimEnd() + \"\\n\";\n\n  const original = item.pairedItem?.item !== undefined\n    ? this.getInputData(0, item.pairedItem.item).\n        json\n    : {};\n\n  return {\n    json: {\n      ...original,\n      translated_markdown: translated\n    }\n  };\n});"
+      },
+      "name": "postProcessTranslation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1880,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const PLACEHOLDER_REGEX = /{{\\s*[\\w.-]+\\s*}}/g;\n\nreturn items.map((item) => {\n  const original = item.json.content;\n  const translated = item.json.translated_markdown;\n  const errors = [];\n\n  const srcPlaceholders = original.match(PLACEHOLDER_REGEX) || [];\n  const dstPlaceholders = translated.match(PLACEHOLDER_REGEX) || [];\n\n  if (srcPlaceholders.length !== dstPlaceholders.length) {\n    errors.push(`Placeholder mismatch for ${item.json.source_path} (${item.json.target_language})`);\n  }\n\n  const srcFenceCount = (original.match(/```/g) || []).length;\n  const dstFenceCount = (translated.match(/```/g) || []).length;\n  if (srcFenceCount !== dstFenceCount) {\n    errors.push(`Code fence mismatch for ${item.json.source_path} (${item.json.target_language})`);\n  }\n\n  const ratio = translated.length / Math.max(1, original.length);\n  if (ratio < 0.5 || ratio > 2.0) {\n    errors.push(`Length ratio out of bounds for ${item.json.source_path} (${item.json.target_language}) -> ${ratio.toFixed(2)}`);\n  }\n\n  if (errors.length) {\n    item.json.verification_errors = errors;\n  }\n\n  return item;\n});"
+      },
+      "name": "verifyContent",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "mode": "expression",
+          "expression": "={{ Array.isArray($json.verification_errors) && $json.verification_errors.length > 0 }}"
+        }
+      },
+      "name": "hasVerificationErrors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2280,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const message = `Translation verification failed for ${$json.source_path} (${ $json.target_language }):\\n${($json.verification_errors || []).join(\"\\n\")}`;\nreturn [{ json: { message } }];"
+      },
+      "name": "Build Alert Message",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.TRANSLATION_ALERT_WEBHOOK }}",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "continueOnFail": false
+        },
+        "bodyParametersJson": "={{ { text: $json.message } }}"
+      },
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        2680,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "throw new Error($json.message);"
+      },
+      "name": "Fail Execution",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "function normalizeLists(markdown) {\n  return markdown.replace(/(-|\\*) {3,}/g, \"$1 \");\n}\n\nfunction ensureHeadingSpacing(markdown) {\n  return markdown.replace(/(#+ [^\\n]+)(?!\\n\\n)/g, \"$1\\n\");\n}\n\nreturn items.map((item) => {\n  let md = item.json.translated_markdown;\n  md = normalizeLists(md);\n  md = ensureHeadingSpacing(md);\n  item.json.translated_markdown = md;\n  return item;\n});"
+      },
+      "name": "formatMarkdown",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map((item) => {\n  const targetLocale = item.json.target_language;\n  const targetPath = item.json.source_path.replace(\"docs/en/\", `docs/${targetLocale}/`);\n\n  return {\n    json: {\n      ...item.json,\n      target_path: targetPath,\n      github_body: {\n        message: `chore: update localized docs (${targetLocale})`,\n        branch: item.json.branch.replace(\"refs/heads/\", \"\"),\n        content: Buffer.from(item.json.translated_markdown).toString(\"base64\"),\n        committer: {\n          name: process.env.GITHUB_COMMIT_NAME || \"Docs Bot\",\n          email: process.env.GITHUB_COMMIT_EMAIL || \"docs-bot@example.com\"\n        }\n      }\n    }\n  };\n});"
+      },
+      "name": "prepareGitHubPayload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2680,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.github.com/repos/${$env.GITHUB_REPOSITORY}/contents/${$json.target_path}` }}",
+        "options": {
+          "fullResponse": true
+        },
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "ref",
+              "value": "={{ $json.github_body.branch }}"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.GITHUB_DOCS_TOKEN}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        }
+      },
+      "name": "getCurrentFileSHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map((item) => {\n  const sha = item.json.body?.sha || null;\n  return {\n    json: {\n      ...item.pairedItem ? this.getInputData(0, item.pairedItem.item).json : {},\n      current_sha: sha\n    }\n  };\n});"
+      },
+      "name": "attachSHA",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.github.com/repos/${$env.GITHUB_REPOSITORY}/contents/${$json.target_path}` }}",
+        "method": "PUT",
+        "jsonParameters": true,
+        "options": {
+          "fullResponse": true
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.GITHUB_DOCS_TOKEN}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{ {\n  message: $json.github_body.message,\n  branch: $json.github_body.branch,\n  content: $json.github_body.content,\n  committer: $json.github_body.committer,\n  sha: $json.current_sha ?? undefined\n} }}"
+      },
+      "name": "commitToGitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        3280,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const translations = items.map((item) => ({\n  language: item.json.target_language,\n  path: item.json.target_path,\n  content: item.json.translated_markdown\n}));\n\nreturn [\n  {\n    json: {\n      translations\n    }\n  }\n];"
+      },
+      "name": "collectTranslations",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        3480,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "responseBody": "={{ $json }}",
+        "responseCode": 200
+      },
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3680,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Payload": {
+      "main": [
+        [
+          {
+            "node": "translationRequired",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "translationRequired": {
+      "main": [
+        [
+          {
+            "node": "filterFiles",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "filterFiles": {
+      "main": [
+        [
+          {
+            "node": "prepareJobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepareJobs": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "prepareTranslationRequest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepareTranslationRequest": {
+      "main": [
+        [
+          {
+            "node": "translateContent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "translateContent": {
+      "main": [
+        [
+          {
+            "node": "postProcessTranslation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "postProcessTranslation": {
+      "main": [
+        [
+          {
+            "node": "verifyContent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verifyContent": {
+      "main": [
+        [
+          {
+            "node": "hasVerificationErrors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hasVerificationErrors": {
+      "main": [
+        [
+          {
+            "node": "formatMarkdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Alert Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Alert Message": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alert": {
+      "main": [
+        [
+          {
+            "node": "Fail Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "formatMarkdown": {
+      "main": [
+        [
+          {
+            "node": "prepareGitHubPayload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepareGitHubPayload": {
+      "main": [
+        [
+          {
+            "node": "getCurrentFileSHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getCurrentFileSHA": {
+      "main": [
+        [
+          {
+            "node": "attachSHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "attachSHA": {
+      "main": [
+        [
+          {
+            "node": "commitToGitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "commitToGitHub": {
+      "main": [
+        [
+          {
+            "node": "collectTranslations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "collectTranslations": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true
+  },
+  "pinData": {},
+  "tags": []
+}
