@@ -16,6 +16,7 @@ nav:
       - Getting Started: guides/getting-started.md
       - Translation Workflow: guides/translation-flow.md
       - Localization Playbook: guides/localization-playbook.md
+      - Integration Checklist: guides/integration-checklist.md
   - Reference:
       - API Overview: reference/api.md
 
@@ -38,6 +39,7 @@ plugins:
             Getting Started: Primeros Pasos
             Translation Workflow: Flujo de Traducción
             Localization Playbook: Manual de Localización
+            Integration Checklist: Lista de Verificación de Integración
             Reference: Referencia
             API Overview: Descripción de la API
         - locale: fr
@@ -49,6 +51,7 @@ plugins:
             Getting Started: Démarrage
             Translation Workflow: Flux de Traduction
             Localization Playbook: Guide de Localisation
+            Integration Checklist: Liste de Contrôle d'Intégration
             Reference: Référence
             API Overview: Vue d'ensemble de l'API
 

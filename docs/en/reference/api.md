@@ -13,6 +13,7 @@ The platform exposes a REST API that powers dynamic content such as release note
 - `POST /api/v1/pages` — create or replace localized Markdown.
 - `GET /api/v1/languages` — list active locales for the site.
 - `POST /api/v1/translation-jobs` — submit batches of Markdown fragments for asynchronous translation.
+- `GET /api/v1/translation-jobs/{id}` — check the status of an asynchronous translation job, including errors reported by downstream workflows.
 
 ### Translation Job Payload
 
@@ -40,6 +41,7 @@ The platform exposes a REST API that powers dynamic content such as release note
 | 404 | Not found | Confirm the slug exists for the requested locale. |
 | 503 | Service unavailable | Retry with exponential backoff. |
 | 524 | Translation timeout | Split the batch into smaller chunks and resubmit. |
+| 529 | Translation verification failed | Review the verification errors attached to the job payload and resubmit after fixes. |
 
 !!! warning "Preview API only"
     These endpoints are sample data used to stress test translation configurations and do not represent the production contract.
