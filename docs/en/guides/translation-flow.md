@@ -16,6 +16,7 @@ This guide outlines the end-to-end process that keeps localized documentation up
 - `scripts/request_translation.py` — Helper that packages and sends payloads to n8n.
 - `automation/prompts/` — Sample prompts and templates for translation services.
 - `automation/n8n/` — Step-by-step instructions for constructing the companion n8n workflow.
+- `guides/localization-playbook.md` — QA checklist for reviewing translated Markdown before publishing.
 
 ## Adding Languages
 
