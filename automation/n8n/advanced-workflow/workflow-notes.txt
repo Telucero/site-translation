@@ -256,53 +256,73 @@ Purpose: Normalize whitespace and ensure trailing newline.
 JavaScript:
 
 ```javascript
-const inputItems = this.getInputData();
+// n8n Code node — robust translation normalizer
+const inputItems = $input.all();
 
-return items.map((item, index) => {
-  const sourceIndex = item.pairedItem?.item ?? index;
-  const original = inputItems[sourceIndex].json;
+return inputItems.map((item, index) => {
+  // Resolve the original item (if paired)
+  const sourceIndex =
+    (item.pairedItem && Number.isInteger(item.pairedItem.item))
+      ? item.pairedItem.item
+      : index;
+
+  const original = inputItems[sourceIndex]?.json ?? {};
+  const payload = item.json;
 
   let detected = null;
   let translationText = "";
-  const payload = item.json;
 
   if (Array.isArray(payload)) {
     const first = payload[0] ?? {};
-    translationText = first.text ?? "";
-    detected = first.detected_source_language ?? null;
+    translationText =
+      first.text ??
+      first.translated_markdown ??
+      first.output_text ??
+      first.content ?? // <-- handle your example input
+      (Array.isArray(first.data) ? first.data[0]?.text : "") ??
+      "";
+    detected =
+      first.detected_source_language ??
+      (Array.isArray(first.data) ? first.data[0]?.detected_source_language : null) ??
+      null;
   } else {
-    translationText = payload?.text
+    translationText =
+      payload?.text
       ?? payload?.translated_markdown
       ?? payload?.output_text
+      ?? payload?.content // <-- handle your example input
       ?? (Array.isArray(payload?.data) ? payload.data[0]?.text : "")
       ?? payload?.body?.translated_markdown
       ?? payload?.body?.text
       ?? "";
-    detected = payload?.detected_source_language
+    detected =
+      payload?.detected_source_language
       ?? (Array.isArray(payload?.data) ? payload.data[0]?.detected_source_language : null)
       ?? payload?.body?.detected_source_language
       ?? null;
   }
 
   if (!translationText) {
-    throw new Error("Translation provider response missing text field");
+    throw new Error("Translation provider response missing text field (looked for text/translated_markdown/output_text/content).");
   }
 
-  const normalized = translationText
+  const normalized = String(translationText)
     .replace(/\u00a0/g, " ")
     .replace(/\r\n/g, "\n")
     .trimEnd() + "\n";
 
-  return {
-    json: {
-      ...original,
-      translated_markdown: normalized,
-      provider_metadata: {
-        detected_source_language: detected
-      }
-    }
+  const out = {
+    ...original,
+    translated_markdown: normalized,
   };
+
+  if (detected) {
+    out.provider_metadata = { detected_source_language: detected };
+  }
+
+  return { json: out };
 });
+
 ```
 
 ------------------------------------------------------
@@ -350,7 +370,11 @@ return items.map((item) => {
 });
 ```
 
-Follow up with an IF node: if `{{ $json.verification_errors ? true : false }}` → send to alert path (Slack/Email) and optionally halt the workflow.
+Follow up with an IF node configured as follows:
+
+- **Mode**: `Expression`
+- **Expression**: `={{ Array.isArray($json.verification_errors) && $json.verification_errors.length > 0 }}`
+- This uses the `boolean` outcome of the expression. When it evaluates to `true`, route the item to the alert path (e.g., Slack/Email + Fail Execution). The `false` branch continues to formatting.
 
 ------------------------------------------------------
 11. Function — `formatMarkdown`
