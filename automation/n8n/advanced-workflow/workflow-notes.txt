@@ -1,0 +1,432 @@
+==============================
+Advanced n8n Translation Flow
+==============================
+
+This guide describes an opinionated n8n workflow that receives GitHub documentation updates, translates them responsibly, runs verification/formatting, and ships the localized Markdown back to GitHub. Place this workflow alongside the existing basic example; it assumes payloads like the ones sent by `.github/workflows/translate.yml`.
+
+-------------------------------------------------
+1. High-Level Node Graph (in execution order)
+-------------------------------------------------
+
+1. Webhook (Trigger)
+2. Function: `validatePayload`
+3. IF: `translationRequired` (optional early exit)
+4. Function: `filterFiles` (enforce allow/deny lists)
+5. Function: `prepareJobs`
+6. Split In Batches (size = 5 docs × locales, configurable)
+7. HTTP Request: `translateContent`
+8. Function: `postProcessTranslation`
+9. Function: `verifyContent`
+10. Function: `formatMarkdown`
+11. Merge (Collect batches)
+12. HTTP Request: `commitToGitHub`
+13. Respond to Webhook
+14. (Optional) Error Workflow → Slack / Email
+
+Each node is detailed below.
+
+--------------------------------------------
+2. Webhook Node Configuration
+--------------------------------------------
+
+- Method: `POST`
+- Path: `/docs/translate`
+- Respond: `When Last Node Finishes`
+- Auth: Token header (`X-Workflow-Token`)
+
+Expected payload shape (JSON):
+
+```
+{
+  "branch": "refs/heads/main",
+  "commit": "abc1234",
+  "default_language": "en",
+  "target_languages": ["es", "fr"],
+  "documents": [
+    {
+      "path": "docs/en/index.md",
+      "language": "en",
+      "checksum": "sha256...",
+      "content": "# Markdown..."
+    }
+  ]
+}
+```
+
+------------------------------------------------------
+3. Function Node — `validatePayload`
+------------------------------------------------------
+
+Purpose: Guard against malformed requests before expensive translation calls.
+
+JavaScript:
+
+```javascript
+const docSchema = ["path", "language", "checksum", "content"];
+const errors = [];
+const payload = items[0].json;
+
+if (!Array.isArray(payload.documents) || payload.documents.length === 0) {
+  errors.push("Missing documents array");
+}
+
+if (!Array.isArray(payload.target_languages) || payload.target_languages.length === 0) {
+  errors.push("Missing target_languages");
+}
+
+if (!payload.branch || !payload.commit) {
+  errors.push("Branch and commit metadata are required");
+}
+
+if (payload.documents) {
+  for (const doc of payload.documents) {
+    for (const key of docSchema) {
+      if (!doc[key]) {
+        errors.push(`Document ${doc.path ?? "<unknown>"} missing key: ${key}`);
+      }
+    }
+    if (!doc.path.startsWith("docs/en/")) {
+      errors.push(`Document outside allowed scope: ${doc.path}`);
+    }
+  }
+}
+
+if (errors.length) {
+  throw new Error(`Payload validation failed: ${errors.join("; ")}`);
+}
+
+return items;
+```
+
+------------------------------------------------------
+4. IF Node — `translationRequired`
+------------------------------------------------------
+
+- Expression: `{{ $json.documents.length > 0 && $json.target_languages.length > 0 }}`
+- If false → `Respond to Webhook` with `{ "translations": [] }`.
+
+------------------------------------------------------
+5. Function Node — `filterFiles`
+------------------------------------------------------
+
+Purpose: Skip files that should never be machine-translated (e.g., legal pages, changelog, specific filenames).
+
+Environment variables:
+- `TRANSLATION_DENYLIST` (comma-separated glob patterns)
+- `TRANSLATION_ALLOWLIST` (optional, comma-separated patterns)
+
+JavaScript:
+
+```javascript
+const { documents } = items[0].json;
+const deny = (process.env.TRANSLATION_DENYLIST || "")
+  .split(",")
+  .map((p) => p.trim())
+  .filter(Boolean);
+const allow = (process.env.TRANSLATION_ALLOWLIST || "")
+  .split(",")
+  .map((p) => p.trim())
+  .filter(Boolean);
+
+const micromatch = require("micromatch");
+
+const filtered = documents.filter((doc) => {
+  if (allow.length && !micromatch.isMatch(doc.path, allow)) {
+    return false;
+  }
+  if (deny.length && micromatch.isMatch(doc.path, deny)) {
+    return false;
+  }
+  return true;
+});
+
+if (!filtered.length) {
+  throw new Error("No documents left after filter; aborting translation.");
+}
+
+return [{ json: { ...items[0].json, documents: filtered } }];
+```
+
+Install `micromatch` in n8n if not already available.
+
+------------------------------------------------------
+6. Function Node — `prepareJobs`
+------------------------------------------------------
+
+Same logic as earlier, but we add metadata for downstream verification.
+
+JavaScript:
+
+```javascript
+const payload = items[0].json;
+const jobs = [];
+
+for (const doc of payload.documents) {
+  for (const locale of payload.target_languages) {
+    jobs.push({
+      json: {
+        source_path: doc.path,
+        source_language: payload.default_language,
+        target_language: locale,
+        checksum: doc.checksum,
+        content: doc.content,
+        branch: payload.branch,
+        commit: payload.commit
+      }
+    });
+  }
+}
+
+return jobs;
+```
+
+------------------------------------------------------
+7. Split In Batches
+------------------------------------------------------
+
+- Batch size: 5 (adjust per provider limits)
+- Options: Pause 2 seconds between batches to respect API quotas.
+
+------------------------------------------------------
+8. HTTP Request — `translateContent`
+------------------------------------------------------
+
+- Method: `POST`
+- URL: translation provider endpoint (e.g., OpenAI Responses API or DeepL glossaries).
+- Headers: `Authorization`, `Content-Type: application/json`
+- Body example for OpenAI:
+
+```json
+{
+  "model": "gpt-4o-mini",
+  "input": [
+    {"role": "system", "content": "{{ $env.TRANSLATION_PROMPT }}" },
+    {"role": "user", "content": "{{ $json.content }}"}
+  ],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "translation",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "translated_markdown": {"type": "string"}
+        },
+        "required": ["translated_markdown"]
+      }
+    }
+  }
+}
+```
+
+Guardrails:
+- Timeout: 120s
+- Retry on `429` / `5xx` with exponential backoff (enable `Continue On Fail` + Workflow execute error branch).
+- Capture provider response metadata for audit (`usage`, `model`, etc.).
+
+------------------------------------------------------
+9. Function — `postProcessTranslation`
+------------------------------------------------------
+
+Purpose: Normalize whitespace and ensure trailing newline.
+
+JavaScript:
+
+```javascript
+return items.map((item) => {
+  const body = item.json.body ?? item.json;
+  const translated = body.translated_markdown
+    .replace(/\u00a0/g, " ")      // no-break spaces
+    .replace(/\r\n/g, "\n")
+    .trimEnd() + "\n";
+
+  return {
+    json: {
+      ...item.json,
+      translated_markdown: translated
+    }
+  };
+});
+```
+
+------------------------------------------------------
+10. Function — `verifyContent`
+------------------------------------------------------
+
+Checks for common issues such as missing code fences, placeholder tampering, or suspicious length deltas.
+
+JavaScript:
+
+```javascript
+const PLACEHOLDER_REGEX = /{{\s*[\w.-]+\s*}}/g;
+const errors = [];
+
+return items.map((item) => {
+  const original = item.json.content;
+  const translated = item.json.translated_markdown;
+
+  // Placeholder verification
+  const srcPlaceholders = original.match(PLACEHOLDER_REGEX) || [];
+  const dstPlaceholders = translated.match(PLACEHOLDER_REGEX) || [];
+
+  if (srcPlaceholders.length !== dstPlaceholders.length) {
+    errors.push(`Placeholder mismatch for ${item.json.source_path} (${item.json.target_language})`);
+  }
+
+  // Code fence validation
+  const srcFenceCount = (original.match(/```/g) || []).length;
+  const dstFenceCount = (translated.match(/```/g) || []).length;
+  if (srcFenceCount !== dstFenceCount) {
+    errors.push(`Code fence mismatch for ${item.json.source_path} (${item.json.target_language})`);
+  }
+
+  // Length heuristic
+  const ratio = translated.length / Math.max(1, original.length);
+  if (ratio < 0.5 || ratio > 2.0) {
+    errors.push(`Length ratio out of bounds for ${item.json.source_path} (${item.json.target_language}) -> ${ratio.toFixed(2)}`);
+  }
+
+  if (errors.length) {
+    item.json.verification_errors = errors;
+  }
+
+  return item;
+});
+```
+
+Follow up with an IF node: if `{{ $json.verification_errors ? true : false }}` → send to alert path (Slack/Email) and optionally halt the workflow.
+
+------------------------------------------------------
+11. Function — `formatMarkdown`
+------------------------------------------------------
+
+Purpose: Apply deterministic Markdown formatting (e.g., ensure spacing around headings/lists). For complex needs, integrate a formatter container; here we keep lightweight adjustments.
+
+JavaScript:
+
+```javascript
+function normalizeLists(markdown) {
+  return markdown.replace(/(-|\*) {3,}/g, "$1 ");
+}
+
+function ensureHeadingSpacing(markdown) {
+  return markdown.replace(/(#+ [^\n]+)(?!\n\n)/g, "$1\n");
+}
+
+return items.map((item) => {
+  let md = item.json.translated_markdown;
+  md = normalizeLists(md);
+  md = ensureHeadingSpacing(md);
+
+  item.json.translated_markdown = md;
+  return item;
+});
+```
+
+------------------------------------------------------
+12. Merge Node
+------------------------------------------------------
+
+Collect all batches back into a single array. Configure the Merge node with:
+- Mode: `Wait`
+- Property: default
+
+------------------------------------------------------
+13. HTTP Request — `commitToGitHub`
+------------------------------------------------------
+
+Use the GitHub Contents API to create/update files in a single commit or call the Git Data API for a tree-based commit.
+
+Inputs needed:
+- Token with `repo` scope (store via n8n credentials).
+- Target branch: reuse `branch` from payload (`refs/heads/main` → `main`).
+
+Example request (one file per call, simple approach):
+
+```
+Method: PUT
+URL: https://api.github.com/repos/<org>/<repo>/contents/{{ $json.target_path }}
+Headers:
+  Authorization: Bearer {{$credentials.githubApi.token}}
+  Accept: application/vnd.github+json
+Body:
+{
+  "message": "chore: update localized docs ({{$json.target_language}})",
+  "branch": "main",
+  "content": "{{ Buffer.from($json.translated_markdown).toString('base64') }}",
+  "sha": "{{ $json.sha ?? null }}"
+}
+```
+
+Recommended enhanced approach:
+1. Build a Git tree with all translations.
+2. Create a commit referencing the tree.
+3. Update the branch reference.
+
+This avoids multiple commits. For brevity, choose the method that fits your automation policy.
+
+Guardrails:
+- Compare `checksum` from payload with current Git blob before write; abort if mismatched to avoid overwriting divergent content.
+- For dry runs, send results back in webhook response without writing to GitHub.
+
+------------------------------------------------------
+14. Respond to Webhook
+------------------------------------------------------
+
+Return JSON back to GitHub Action:
+
+```
+{
+  "translations": [
+    {
+      "language": "es",
+      "path": "docs/es/index.md",
+      "content": "...localized markdown..."
+    }
+  ],
+  "verification_errors": []
+}
+```
+
+If errors occurred, respond with `{ "error": "..." }` and HTTP 500 to force the Action to halt.
+
+------------------------------------------------------
+15. Error Handling
+------------------------------------------------------
+
+Attach the workflow to an “Error Workflow” or use the built-in `Execute Workflow On Error`. Recommended actions:
+- Send Slack/Email notification with payload snapshot, job ID, and error message.
+- Log failing documents to a persistent store (S3, database) for follow-up.
+- Optionally requeue the translation request (retry with delay) while preventing infinite loops.
+
+------------------------------------------------------
+16. Additional Guardrails & Tips
+------------------------------------------------------
+
+- **Rate limiting**: Introduce a Wait node between batches if your provider has strict per-minute limits.
+- **Language fallback**: If translation fails for a locale, respond with the original English content to avoid missing pages; flag the incident for manual review.
+- **Glossary management**: If you host glossaries externally, add a node before `prepareJobs` to fetch the latest glossary terms and inject them into each translation request.
+- **Formatting edge cases**: Consider a final `Code` node that rewrites relative links (e.g., replace `/en/` with `/es/`) if the translation service modifies them.
+- **Unit testing**: Store example payloads (fixtures) and create an n8n manual trigger that feeds them into the workflow for repeatable testing without hitting GitHub.
+- **Rollback strategy**: Provide a manual workflow that can revert the last localized commit in GitHub if QA discovers issues after publication.
+
+------------------------------------------------------
+17. Files & Variables Recap
+------------------------------------------------------
+
+Environment variables referenced:
+- `TRANSLATION_DENYLIST` — Patterns to skip (e.g., `docs/en/legal/**,docs/en/changelog.md`).
+- `TRANSLATION_ALLOWLIST` — Optional positive filter.
+- `TRANSLATION_PROMPT` — System prompt for LLM providers.
+
+Credentials:
+- Translation API key (HTTP Request node credential).
+- GitHub personal access token (repo scope).
+- Slack/Email credentials for notifications.
+
+Artifacts produced:
+- Localized Markdown string per document.
+- Optional verification log (array of warnings).
+- Git commit or direct file updates in the target repository.
+
+This setup balances automation with necessary oversight to keep multilingual documentation reliable. Adapt batch sizes, guardrails, and verification heuristics to match your translation provider and team workflow. 
