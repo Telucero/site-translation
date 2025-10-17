@@ -83,89 +83,6 @@
     },
     {
       "parameters": {
-        "batchSize": 5,
-        "options": {
-          "pauseBetweenBatches": 2
-        }
-      },
-      "name": "Split In Batches",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 1,
-      "position": [
-        1280,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "functionCode": "return items.map(item => {\n  return {\n    json: {\n      ...item.json,\n      requestPayload: {\n        model: process.env.TRANSLATION_MODEL || \"gpt-4o-mini\",\n        input: [\n          {\n            role: \"system\",\n            content: process.env.TRANSLATION_PROMPT || \"You are a professional translator. Preserve Markdown, code fences, and placeholders.\"\n          },\n          {\n            role: \"user\",\n            content: item.json.content\n          }\n        ],\n        metadata: {\n          source_path: item.json.source_path,\n          target_language: item.json.target_language\n        }\n      }\n    }\n  };\n});"
-      },
-      "name": "prepareTranslationRequest",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [
-        1480,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{ $env.TRANSLATION_API_URL }}",
-        "method": "POST",
-        "response": "json",
-        "jsonParameters": true,
-        "options": {
-          "timeout": 120,
-          "fullResponse": false
-        },
-        "headerParametersUi": {
-          "parameter": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{$env.TRANSLATION_API_KEY}}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "bodyParametersJson": "={{ $json.requestPayload }}"
-      },
-      "name": "translateContent",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [
-        1680,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "functionCode": "const inputItems = this.getInputData();\n\nreturn items.map((item, index) => {\n  const sourceIndex = item.pairedItem?.item ?? index;\n  const original = inputItems[sourceIndex].json;\n\n  let detected = null;\n  let translationText = \"\";\n  const payload = item.json;\n\n  if (Array.isArray(payload)) {\n    const first = payload[0] ?? {};\n    translationText = first.text ?? \"\";\n    detected = first.detected_source_language ?? null;\n  } else {\n    translationText = payload?.text\n      ?? payload?.translated_markdown\n      ?? payload?.output_text\n      ?? (Array.isArray(payload?.data) ? payload.data[0]?.text : \"\")\n      ?? payload?.body?.translated_markdown\n      ?? payload?.body?.text\n      ?? \"\";\n    detected = payload?.detected_source_language\n      ?? (Array.isArray(payload?.data) ? payload.data[0]?.detected_source_language : null)\n      ?? payload?.body?.detected_source_language\n      ?? null;\n  }\n\n  if (!translationText) {\n    throw new Error(\"Translation provider response missing text field\");\n  }\n\n  const normalized = translationText\n    .replace(/\\u00a0/g, \" \")\n    .replace(/\\r\\n/g, \"\\n\")\n    .trimEnd() + \"\\n\";\n\n  return {\n    json: {\n      ...original,\n      translated_markdown: normalized,\n      provider_metadata: {\n        detected_source_language: detected\n      }\n    }\n  };\n});"
-      },
-      "name": "postProcessTranslation",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [
-        1880,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "functionCode": "const PLACEHOLDER_REGEX = /{{\\s*[\\w.-]+\\s*}}/g;\n\nreturn items.map((item) => {\n  const original = item.json.content;\n  const translated = item.json.translated_markdown;\n  const errors = [];\n\n  const srcPlaceholders = original.match(PLACEHOLDER_REGEX) || [];\n  const dstPlaceholders = translated.match(PLACEHOLDER_REGEX) || [];\n\n  if (srcPlaceholders.length !== dstPlaceholders.length) {\n    errors.push(`Placeholder mismatch for ${item.json.source_path} (${item.json.target_language})`);\n  }\n\n  const srcFenceCount = (original.match(/```/g) || []).length;\n  const dstFenceCount = (translated.match(/```/g) || []).length;\n  if (srcFenceCount !== dstFenceCount) {\n    errors.push(`Code fence mismatch for ${item.json.source_path} (${item.json.target_language})`);\n  }\n\n  const ratio = translated.length / Math.max(1, original.length);\n  if (ratio < 0.5 || ratio > 2.0) {\n    errors.push(`Length ratio out of bounds for ${item.json.source_path} (${item.json.target_language}) -> ${ratio.toFixed(2)}`);\n  }\n\n  if (errors.length) {\n    item.json.verification_errors = errors;\n  }\n\n  return item;\n});"
-      },
-      "name": "verifyContent",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [
-        2080,
-        420
-      ]
-    },
-    {
-      "parameters": {
         "conditions": {
           "mode": "expression",
           "expression": "={{ Array.isArray($json.verification_errors) && $json.verification_errors.length > 0 }}"
@@ -219,18 +136,6 @@
       "position": [
         2880,
         200
-      ]
-    },
-    {
-      "parameters": {
-        "functionCode": "function normalizeLists(markdown) {\n  return markdown.replace(/(-|\\*) {3,}/g, \"$1 \");\n}\n\nfunction ensureHeadingSpacing(markdown) {\n  return markdown.replace(/(#+ [^\\n]+)(?!\\n\\n)/g, \"$1\\n\");\n}\n\nreturn items.map((item) => {\n  let md = item.json.translated_markdown;\n  md = normalizeLists(md);\n  md = ensureHeadingSpacing(md);\n  item.json.translated_markdown = md;\n  return item;\n});"
-      },
-      "name": "formatMarkdown",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [
-        2480,
-        520
       ]
     },
     {
@@ -346,6 +251,82 @@
         3680,
         520
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node \u2014 capitalize language codes\nconst inputItems = $input.all();\n\nfunction toUpperLang(code) {\n  if (typeof code !== 'string') return code;\n  // Trim and uppercase; this also uppercases hyphenated variants (e.g., pt-br -> PT-BR)\n  return code.trim().toUpperCase();\n}\n\nreturn inputItems.map((item) => {\n  const json = { ...(item.json || {}) };\n\n  if (json.source_language != null) {\n    json.source_language = toUpperLang(json.source_language);\n  }\n  if (json.target_language != null) {\n    json.target_language = toUpperLang(json.target_language);\n  }\n\n  return { json };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        -64
+      ],
+      "id": "93bb05d7-837d-4ae5-b3e1-6d8529bd12c6",
+      "name": "langCode"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.content }}",
+        "translateTo": "={{ $json.target_language }}",
+        "additionalFields": {
+          "preserveFormatting": "0",
+          "formality": "default"
+        }
+      },
+      "type": "n8n-nodes-base.deepL",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -80
+      ],
+      "id": "f91729af-1be5-4d9f-a0ed-2759c3b2fb40",
+      "name": "Translate a language",
+      "credentials": {
+        "deepLApi": {
+          "id": "6Tq6tZmIqPqv4Rce",
+          "name": "DeepL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node \u2014 translation normalizer (content next to translated_markdown)\nconst inputItems = $input.all();\nconst langItems = $('langCode').all(); // upstream node with capitalized language codes + source fields\n\nfunction getSourceIndex(item, fallbackIndex) {\n  const p = item?.pairedItem;\n  return (p && Number.isInteger(p.item)) ? p.item : fallbackIndex;\n}\n\nreturn inputItems.map((item, index) => {\n  const sourceIndex = getSourceIndex(item, index);\n\n  // Prefer data from `langCode`; fallback to current item.json if missing\n  const langJson = langItems[sourceIndex]?.json ?? {};\n  const payload = item.json;\n\n  let detected = null;\n  let translationText = \"\";\n\n  // --- Extract translation text and detected language from provider payload ---\n  if (Array.isArray(payload)) {\n    const first = payload[0] ?? {};\n    translationText =\n      first.text ??\n      first.translated_markdown ??\n      first.output_text ??\n      first.content ??\n      (Array.isArray(first.data) ? first.data[0]?.text : \"\") ??\n      \"\";\n    detected =\n      first.detected_source_language ??\n      (Array.isArray(first.data) ? first.data[0]?.detected_source_language : null) ??\n      null;\n  } else {\n    translationText =\n      payload?.text\n      ?? payload?.translated_markdown\n      ?? payload?.output_text\n      ?? payload?.content\n      ?? (Array.isArray(payload?.data) ? payload.data[0]?.text : \"\")\n      ?? payload?.body?.translated_markdown\n      ?? payload?.body?.text\n      ?? \"\";\n    detected =\n      payload?.detected_source_language\n      ?? (Array.isArray(payload?.data) ? payload.data[0]?.detected_source_language : null)\n      ?? payload?.body?.detected_source_language\n      ?? null;\n  }\n\n  if (!translationText) {\n    throw new Error(\"Translation provider response missing text field (looked for text/translated_markdown/output_text/content).\");\n  }\n\n  // Normalize translation output\n  const normalized = String(translationText)\n    .replace(/\\u00a0/g, \" \")\n    .replace(/\\r\\n/g, \"\\n\")\n    .trimEnd() + \"\\n\";\n\n  // Reorder so `content` sits directly before `translated_markdown`\n  const { content, ...rest } = langJson;\n\n  const out = {\n    ...rest,                          // all other fields first\n    content: String(content ?? \"\"),   // original English content\n    translated_markdown: normalized,  // translation right after content\n  };\n\n  if (detected) {\n    out.provider_metadata = { detected_source_language: detected };\n  }\n\n  return { json: out };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        -96
+      ],
+      "id": "a512a3ff-fdc9-4441-a28c-ef1c1b53d01c",
+      "name": "postProcessing"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node \u2014 translation QA checks (aligned with previous normalizer)\nconst inputItems = $input.all();\n\nconst PLACEHOLDER_REGEX = /{{\\s*[\\w.-]+\\s*}}/g;\n\n// Helper: multiset equality (same elements with same counts)\nfunction sameMultiset(a = [], b = []) {\n  const count = (arr) => {\n    const m = new Map();\n    for (const x of arr) m.set(x, (m.get(x) || 0) + 1);\n    return m;\n  };\n  const ma = count(a);\n  const mb = count(b);\n  if (ma.size !== mb.size) return false;\n  for (const [k, va] of ma) if (mb.get(k) !== va) return false;\n  return true;\n}\n\nreturn inputItems.map((item, idx) => {\n  const json = item.json || {};\n\n  // Source (English) and target (translation) per the previous node\n  const original = typeof json.content === \"string\" ? json.content : \"\";\n  const translated = typeof json.translated_markdown === \"string\" ? json.translated_markdown : \"\";\n\n  const errs = [];\n\n  // Basic presence checks (helps catch wiring issues upstream)\n  if (!original) {\n    errs.push(`Missing English source content for ${json.source_path || \"(unknown path)\"} (${json.source_language || \"?\"}).`);\n  }\n  if (!translated) {\n    errs.push(`Missing translated_markdown for ${json.source_path || \"(unknown path)\"} (${json.target_language || \"?\"}).`);\n  }\n\n  // Only proceed with structural checks if both sides exist\n  if (original && translated) {\n    // 1) Placeholder verification (multiset: values + counts)\n    const srcPlaceholders = original.match(PLACEHOLDER_REGEX) || [];\n    const dstPlaceholders = translated.match(PLACEHOLDER_REGEX) || [];\n    if (!sameMultiset(srcPlaceholders, dstPlaceholders)) {\n      errs.push(\n        `Placeholder mismatch for ${json.source_path || \"(unknown path)\"} (${json.target_language || \"?\"}).`\n      );\n    }\n\n    // 2) Code fence validation\n    const srcFenceCount = (original.match(/```/g) || []).length;\n    const dstFenceCount = (translated.match(/```/g) || []).length;\n\n    if (srcFenceCount !== dstFenceCount) {\n      errs.push(\n        `Code fence count mismatch for ${json.source_path || \"(unknown path)\"} (${json.target_language || \"?\"}).`\n      );\n    }\n    if (dstFenceCount % 2 !== 0) {\n      errs.push(\n        `Unclosed code fence detected in translation for ${json.source_path || \"(unknown path)\"} (${json.target_language || \"?\"}).`\n      );\n    }\n\n    // 3) Length heuristic (simple sanity check)\n    const ratio = translated.length / Math.max(1, original.length);\n    if (ratio < 0.5 || ratio > 2.0) {\n      errs.push(\n        `Length ratio out of bounds for ${json.source_path || \"(unknown path)\"} (${json.target_language || \"?\"}) -> ${ratio.toFixed(2)}`\n      );\n    }\n  }\n\n  if (errs.length) {\n    json.verification_errors = errs;\n  } else {\n    delete json.verification_errors;\n  }\n\n  return { json };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        -64
+      ],
+      "id": "bb87f06b-40fc-4ff1-b512-f4ae38bfa973",
+      "name": "verifyContent"
+    },
+    {
+      "parameters": {
+        "jsCode": "function normalizeLists(markdown) {\n  return markdown.replace(/(-|\\*) {3,}/g, \"$1 \" );\n}\n\nfunction ensureHeadingSpacing(markdown) {\n  return markdown.replace(/(#+ [^\\n]+)(?!\\n\\n)/g, \"$1\\n\");\n}\n\nreturn items.map((item) => {\n  let md = item.json.translated_markdown;\n  md = normalizeLists(md);\n  md = ensureHeadingSpacing(md);\n\n  item.json.translated_markdown = md;\n  return item;\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        -64
+      ],
+      "id": "af2d5878-f325-48fe-b315-7261c931be67",
+      "name": "formatMarkdown"
     }
   ],
   "connections": {
@@ -404,51 +385,7 @@
       "main": [
         [
           {
-            "node": "Split In Batches",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split In Batches": {
-      "main": [
-        [
-          {
-            "node": "prepareTranslationRequest",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "prepareTranslationRequest": {
-      "main": [
-        [
-          {
-            "node": "translateContent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "translateContent": {
-      "main": [
-        [
-          {
-            "node": "postProcessTranslation",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "postProcessTranslation": {
-      "main": [
-        [
-          {
-            "node": "verifyContent",
+            "node": "langCode",
             "type": "main",
             "index": 0
           }
@@ -571,12 +508,64 @@
           }
         ]
       ]
+    },
+    "langCode": {
+      "main": [
+        [
+          {
+            "node": "Translate a language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translate a language": {
+      "main": [
+        [
+          {
+            "node": "postProcessing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "postProcessing": {
+      "main": [
+        [
+          {
+            "node": "verifyContent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "saveExecutionProgress": true
   },
-  "pinData": {},
+  "pinData": {
+    "Translate a language": [
+      {
+        "detected_source_language": "EN",
+        "text": "# Lista de comprobaci\u00f3n de la integraci\u00f3n\n\nUtilice esta lista de comprobaci\u00f3n siempre que conecte un nuevo repositorio de documentaci\u00f3n al proceso de traducci\u00f3n autom\u00e1tica.\n\n## 1. Repositorio GitHub\n\n- [ ] Flujo de trabajo `translate.yml` presente y pasando en `main`.\n- [ ] `TARGET_LANGUAGES` actualizado con las localizaciones que planea generar.\n- [ ] `N8N_WEBHOOK_URL_TR` secreto configurado y probado con la bandera dry-run.\n- [ ] Las reglas de protecci\u00f3n de rama permiten commits desde `GITHUB_TOKEN`.\n\n## 2. Flujo de trabajo n8n\n\n- [ ] Webhook URL coincide con el secreto almacenado en GitHub.\n- [ ] Nodos de validaci\u00f3n, filtrado, traducci\u00f3n y formateo habilitados.\n- [ ] Canal de alerta configurado para notificar fallos de verificaci\u00f3n.\n- Glosario y variables de aviso cargadas para cada configuraci\u00f3n regional.\n\n## 3. Proyecto MkDocs\n\n- [ ] Nuevo contenido en ingl\u00e9s en `docs/en/`.\n- [ ] `mkdocs.yml` nav actualizado y entradas `nav_translations` proporcionadas.\n- [ ] `mkdocs build` tiene \u00e9xito localmente con `mkdocs-material` y `mkdocs-static-i18n`.\n\n## 4. Prueba de humo\n\n1. Crea un cambio corto en ingl\u00e9s y abre un PR.\n2. Fusionar a `main` y monitorizar el flujo de trabajo **Translate Documentation**.\n3. Confirme que los archivos localizados aparecen en `docs/<lang>/`.\n4. Ejecute `mkdocs serve` y revise las p\u00e1ginas `/es/` y `/fr/`.\n\nDocumente cualquier bloqueo y capture los registros en el libro de ejecuci\u00f3n de operaciones compartidas.\n"
+      },
+      {
+        "detected_source_language": "EN",
+        "text": "# Liste de contr\u00f4le de l'int\u00e9gration\n\nUtilisez cette liste de contr\u00f4le lorsque vous connectez un nouveau r\u00e9f\u00e9rentiel documentaire au pipeline de traduction automatique.\n\n## 1. D\u00e9p\u00f4t GitHub\n\n- Le flux de travail `translate.yml` est pr\u00e9sent et passe sur `main`.\n- [ ] `TARGET_LANGUAGES` mis \u00e0 jour avec les locales que vous pr\u00e9voyez de g\u00e9n\u00e9rer.\n- Le secret `N8N_WEBHOOK_URL_TR` est configur\u00e9 et test\u00e9 avec le drapeau dry-run.\n- Les r\u00e8gles de protection des branches autorisent les commits de `GITHUB_TOKEN`.\n\n## 2. Flux de travail n8n\n\n- L'URL du Webhook correspond au secret stock\u00e9 dans GitHub.\n- Les n\u0153uds de validation, de filtrage, de traduction et de formatage sont activ\u00e9s.\n- Canal d'alerte configur\u00e9 pour notifier les \u00e9checs de v\u00e9rification.\n- Le glossaire et les variables d'invite sont charg\u00e9s pour chaque langue.\n\n## 3. Projet MkDocs\n\n- Le nouveau contenu anglais se trouve dans `docs/en/`.\n- [ ] `mkdocs.yml` nav mis \u00e0 jour et entr\u00e9es `nav_translations` fournies.\n- [ ] `mkdocs build` r\u00e9ussit localement avec `mkdocs-material` et `mkdocs-static-i18n`.\n\n## 4. Test de fum\u00e9e\n\n1. Cr\u00e9ez un court changement d'anglais et ouvrez une RP.\n2. Fusionner avec `main` et surveiller le flux de travail **Translate Documentation**.\n3. Confirmer que les fichiers localis\u00e9s apparaissent dans `docs/<lang>/`.\n4. Lancer `mkdocs serve` et revoir les pages `/es/` et `/fr/`.\n\nDocumentez tous les bloqueurs et capturez les journaux dans le runbook des op\u00e9rations partag\u00e9es.\n"
+      },
+      {
+        "detected_source_language": "EN",
+        "text": "# API Overview\n\nLa plataforma expone una API REST que proporciona contenido din\u00e1mico como notas de la versi\u00f3n, b\u00fasqueda multiling\u00fce e incorporaci\u00f3n personalizada. Las siguientes secciones ilustran los puntos finales para probar el proceso de traducci\u00f3n.\n\n## Autenticaci\u00f3n\n\n- `POST /api/v1/token` - intercambia credenciales de cliente por un token de portador.\n- `GET /api/v1/token/refresh` - renueva un token caducado.\n\n## Puntos finales de localizaci\u00f3n\n\n- GET /api/v1/pages/{slug}` - recupera Markdown localizado para el slug especificado.\n- `POST /api/v1/pages` - crea o reemplaza Markdown localizado.\n- GET /api/v1/languages` - lista las localizaciones activas para el sitio.\n- POST /api/v1/translation-jobs` - env\u00eda lotes de fragmentos de Markdown para su traducci\u00f3n as\u00edncrona.\n- GET /api/v1/translation-jobs/{id}` - comprueba el estado de un trabajo de traducci\u00f3n as\u00edncrona, incluidos los errores notificados por los flujos de trabajo posteriores.\n\n### Carga \u00fatil del trabajo de traducci\u00f3n\n\n```json\n{\n  \"source_language\": \"en\",\n  \"target_languages\": [\"es\", \"fr\"],\n  \"documents\": [\n    {\"ruta\": \"docs/es/index.md\", \"content\": \"...\"},\n    {\"ruta\": \"docs/es/reference/api.md\", \"content\": \"...\"}\n  ],\n  \"webhook_url\": \"https://automation.example.com/hooks/translation-complete\"\n}\n```\n\n!!! nota \"Traducciones as\u00edncronas\"\n    La API pone en cola cada solicitud de traducci\u00f3n y env\u00eda los resultados al webhook proporcionado. Utilice el punto final `GET /api/v1/translation-jobs/{id}` para consultar el estado si no hay ning\u00fan webhook disponible.\n\n## C\u00f3digos de error\n\n| C\u00f3digo Significado Acci\u00f3n sugerida\n| ---- | ------- | ---------------- |\n| 400 | Error de validaci\u00f3n | Inspeccione la carga \u00fatil de la solicitud por si faltan campos. |\n| 401 - No autorizado Aseg\u00farese de que el token de acceso es v\u00e1lido. |\n| 404 | No encontrado | Confirme que el slug existe para la localizaci\u00f3n solicitada. |\n| 503 | Servicio no disponible | Reintentar con backoff exponencial. |\n| Divida el lote en partes m\u00e1s peque\u00f1as y vuelva a enviarlo. |\n| 529 | Error de verificaci\u00f3n de traducci\u00f3n | Revise los errores de verificaci\u00f3n adjuntos a la carga de trabajo y vuelva a enviar despu\u00e9s de corregirlos. |\n\nAviso \"S\u00f3lo API de vista previa\"\n    Estos endpoints son datos de muestra utilizados para estresar las configuraciones de traducci\u00f3n de prueba y no representan el contrato de producci\u00f3n.\n"
+      },
+      {
+        "detected_source_language": "EN",
+        "text": "# Vue d'ensemble de l'API\n\nLa plateforme expose une API REST qui alimente le contenu dynamique tel que les notes de version, la recherche multilingue et l'accueil personnalis\u00e9. Les sections suivantes illustrent les points de terminaison pour tester le pipeline de traduction.\n\n## Authentification\n\n- `POST /api/v1/token` - \u00e9change les informations d'identification du client contre un jeton porteur.\n- `GET /api/v1/token/refresh` - renouvelle un jeton qui expire.\n\n## Localization Endpoints\n\n- `GET /api/v1/pages/{slug}` - r\u00e9cup\u00e8re le Markdown localis\u00e9 pour le slug sp\u00e9cifi\u00e9.\n- `POST /api/v1/pages` - cr\u00e9e ou remplace le texte Markdown localis\u00e9.\n- `GET /api/v1/languages` - liste les langues locales actives pour le site.\n- `POST /api/v1/translation-jobs` - soumet des lots de fragments Markdown pour une traduction asynchrone.\n- `GET /api/v1/translation-jobs/{id}` - v\u00e9rifie l'\u00e9tat d'un travail de traduction asynchrone, y compris les erreurs signal\u00e9es par les flux de travail en aval.\n\n### Charge utile d'un travail de traduction\n\n``json\n{\n  \"source_language\" : \"en\",\n  \"target_languages\" : [\"es\", \"fr\"],\n  \"documents\" : [\n    {\"path\" : \"docs/en/index.md\", \"content\" : \"...\"},\n    {\"path\" : \"docs/en/reference/api.md\", \"content\" : \"...\"}\n  ],\n  \"webhook_url\" : \"https://automation.example.com/hooks/translation-complete\"\n}\n```\n\n! !! note \"Traductions asynchrones\"\n    L'API met en file d'attente chaque demande de traduction et envoie les r\u00e9sultats au webhook fourni. Utilisez le point de terminaison `GET /api/v1/translation-jobs/{id}` pour interroger le statut si un webhook n'est pas disponible.\n\n## Codes d'erreur\n\n| Code d'erreur - Signification - Action sugg\u00e9r\u00e9e\n| ---- | ------- | ---------------- |\n| 400 | Erreur de validation | Inspectez les donn\u00e9es utiles de la requ\u00eate pour v\u00e9rifier s'il manque des champs. |\n| 401 | Non autoris\u00e9 | Assurez-vous que le jeton d'acc\u00e8s est fourni et valide. |\n| 404 | Non trouv\u00e9 | Confirmez que la balise existe pour la locale demand\u00e9e. |\n| 503 | Service indisponible | R\u00e9essayer avec un backoff exponentiel. |\n| 524 | Temps d'attente de la traduction | Diviser le lot en plus petits morceaux et le soumettre \u00e0 nouveau. |\n| 529 | \u00c9chec de la v\u00e9rification de la traduction | V\u00e9rifier les erreurs de v\u00e9rification attach\u00e9es \u00e0 la charge utile du travail et resoumettre apr\u00e8s corrections. |\n\n! !! avertissement \"API de pr\u00e9visualisation uniquement\"\n    Ces points de terminaison sont des \u00e9chantillons de donn\u00e9es utilis\u00e9s pour tester les configurations de traducci\u00f3n.\n"
+      }
+    ]
+  },
   "tags": []
 }

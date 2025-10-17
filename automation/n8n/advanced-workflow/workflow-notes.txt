@@ -13,16 +13,17 @@ This guide describes an opinionated n8n workflow that receives GitHub documentat
 3. IF: `translationRequired` (optional early exit)
 4. Function: `filterFiles` (enforce allow/deny lists)
 5. Function: `prepareJobs`
-6. HTTP Request: `translateContent` (runs once per item)
-7. Function: `postProcessTranslation`
-8. Function: `verifyContent`
-9. IF: `hasVerificationErrors`
-10. Function: `formatMarkdown`
-11. Function: `prepareGitHubPayload`
-12. HTTP Request(s): GitHub SHA lookup + commit
-13. Function: `collectTranslations`
-14. Respond to Webhook
-15. (Optional) Error Handling path → Slack / Email
+6. Code: `langCode` (normalize locale casing)
+7. DeepL Node: `Translate a language`
+8. Code: `postProcessing` (provider response normalizer)
+9. Code: `verifyContent`
+10. IF: `hasVerificationErrors`
+11. Code: `formatMarkdown`
+12. Function: `prepareGitHubPayload`
+13. HTTP Request(s): GitHub SHA lookup + commit (optional)
+14. Function: `collectTranslations`
+15. Respond to Webhook
+16. (Optional) Error Handling path → Slack / Email
 
 Each node is detailed below.
 
@@ -208,65 +209,67 @@ for (const doc of payload.documents) {
 return jobs;
 ```
 
-n8n automatically executes downstream nodes once per item, so a Split In Batches node is optional. Keep it only if your translation provider enforces strict rate limits; otherwise wire `prepareJobs` directly into the translation node.
+n8n automatically executes downstream nodes once per item, so batching is optional. After job preparation we uppercase locale codes for the provider and then call DeepL, followed by normalization and QA nodes.
 
 ------------------------------------------------------
-7. HTTP Request — `translateContent`
+6. Code Node — `langCode`
 ------------------------------------------------------
-
-- Method: `POST`
-- URL: translation provider endpoint (e.g., OpenAI Responses API or DeepL glossaries).
-- Headers: `Authorization`, `Content-Type: application/json`
-- Body example for OpenAI:
-
-```json
-{
-  "model": "gpt-4o-mini",
-  "input": [
-    {"role": "system", "content": "{{ $env.TRANSLATION_PROMPT }}" },
-    {"role": "user", "content": "{{ $json.content }}"}
-  ],
-  "response_format": {
-    "type": "json_schema",
-    "json_schema": {
-      "name": "translation",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "translated_markdown": {"type": "string"}
-        },
-        "required": ["translated_markdown"]
-      }
-    }
-  }
-}
-```
-
-Guardrails:
-- Timeout: 120s
-- Retry on `429` / `5xx` with exponential backoff (enable `Continue On Fail` + Workflow execute error branch).
-- Capture provider response metadata for audit (`usage`, `model`, etc.).
-
-------------------------------------------------------
-9. Function — `postProcessTranslation`
-------------------------------------------------------
-
-Purpose: Normalize whitespace and ensure trailing newline.
-
-JavaScript:
 
 ```javascript
-// n8n Code node — robust translation normalizer
+// n8n Code node — capitalize language codes
 const inputItems = $input.all();
 
-return inputItems.map((item, index) => {
-  // Resolve the original item (if paired)
-  const sourceIndex =
-    (item.pairedItem && Number.isInteger(item.pairedItem.item))
-      ? item.pairedItem.item
-      : index;
+function toUpperLang(code) {
+  if (typeof code !== 'string') return code;
+  return code.trim().toUpperCase();
+}
 
-  const original = inputItems[sourceIndex]?.json ?? {};
+return inputItems.map((item) => {
+  const json = { ...(item.json || {}) };
+
+  if (json.source_language != null) {
+    json.source_language = toUpperLang(json.source_language);
+  }
+  if (json.target_language != null) {
+    json.target_language = toUpperLang(json.target_language);
+  }
+
+  return { json };
+});
+```
+
+------------------------------------------------------
+7. DeepL Node — `Translate a language`
+------------------------------------------------------
+
+- Operation: *Translate Text*
+- **Text**: `={{ $json.content }}`
+- **Translate To**: `={{ $json.target_language }}`
+- Additional fields: set `preserveFormatting = 0` and `formality = default` (tune per locale).
+- Credentials: use your DeepL API credential in n8n.
+
+If you need throttling, place a Wait/Split node before DeepL; otherwise each job flows through this node individually.
+
+------------------------------------------------------
+8. Code Node — `postProcessing`
+------------------------------------------------------
+
+Purpose: merge the DeepL response with the original job metadata, normalize whitespace, and keep both the English source (`content`) and translation (`translated_markdown`) for downstream QA.
+
+```javascript
+// n8n Code node — translation normalizer (content next to translated_markdown)
+const inputItems = $input.all();
+const langItems = $('langCode').all(); // upstream node with capitalized language codes + source fields
+
+function getSourceIndex(item, fallbackIndex) {
+  const p = item?.pairedItem;
+  return (p && Number.isInteger(p.item)) ? p.item : fallbackIndex;
+}
+
+return inputItems.map((item, index) => {
+  const sourceIndex = getSourceIndex(item, index);
+
+  const langJson = langItems[sourceIndex]?.json ?? {};
   const payload = item.json;
 
   let detected = null;
@@ -278,7 +281,7 @@ return inputItems.map((item, index) => {
       first.text ??
       first.translated_markdown ??
       first.output_text ??
-      first.content ?? // <-- handle your example input
+      first.content ??
       (Array.isArray(first.data) ? first.data[0]?.text : "") ??
       "";
     detected =
@@ -290,7 +293,7 @@ return inputItems.map((item, index) => {
       payload?.text
       ?? payload?.translated_markdown
       ?? payload?.output_text
-      ?? payload?.content // <-- handle your example input
+      ?? payload?.content
       ?? (Array.isArray(payload?.data) ? payload.data[0]?.text : "")
       ?? payload?.body?.translated_markdown
       ?? payload?.body?.text
@@ -308,11 +311,16 @@ return inputItems.map((item, index) => {
 
   const normalized = String(translationText)
     .replace(/\u00a0/g, " ")
-    .replace(/\r\n/g, "\n")
+    .replace(/
+/g, "
+")
     .trimEnd() + "\n";
 
+  const { content, ...rest } = langJson;
+
   const out = {
-    ...original,
+    ...rest,
+    content: String(content ?? ""),
     translated_markdown: normalized,
   };
 
@@ -322,51 +330,76 @@ return inputItems.map((item, index) => {
 
   return { json: out };
 });
-
 ```
 
 ------------------------------------------------------
-10. Function — `verifyContent`
+9. Code Node — `verifyContent`
 ------------------------------------------------------
 
-Checks for common issues such as missing code fences, placeholder tampering, or suspicious length deltas.
-
-JavaScript:
-
 ```javascript
+// n8n Code node — translation QA checks (aligned with previous normalizer)
+const inputItems = $input.all();
+
 const PLACEHOLDER_REGEX = /{{\s*[\w.-]+\s*}}/g;
-const errors = [];
 
-return items.map((item) => {
-  const original = item.json.content;
-  const translated = item.json.translated_markdown;
+function sameMultiset(a = [], b = []) {
+  const count = (arr) => {
+    const m = new Map();
+    for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
+    return m;
+  };
+  const ma = count(a);
+  const mb = count(b);
+  if (ma.size !== mb.size) return false;
+  for (const [k, va] of ma) if (mb.get(k) != va) return false;
+  return true;
+}
 
-  // Placeholder verification
-  const srcPlaceholders = original.match(PLACEHOLDER_REGEX) || [];
-  const dstPlaceholders = translated.match(PLACEHOLDER_REGEX) || [];
+return inputItems.map((item, idx) => {
+  const json = item.json || {};
 
-  if (srcPlaceholders.length !== dstPlaceholders.length) {
-    errors.push(`Placeholder mismatch for ${item.json.source_path} (${item.json.target_language})`);
+  const original = typeof json.content === "string" ? json.content : "";
+  const translated = typeof json.translated_markdown === "string" ? json.translated_markdown : "";
+
+  const errs = [];
+
+  if (!original) {
+    errs.push(`Missing English source content for ${json.source_path || "(unknown path)"} (${json.source_language || "?"}).`);
+  }
+  if (!translated) {
+    errs.push(`Missing translated_markdown for ${json.source_path || "(unknown path)"} (${json.target_language || "?"}).`);
   }
 
-  // Code fence validation
-  const srcFenceCount = (original.match(/```/g) || []).length;
-  const dstFenceCount = (translated.match(/```/g) || []).length;
-  if (srcFenceCount !== dstFenceCount) {
-    errors.push(`Code fence mismatch for ${item.json.source_path} (${item.json.target_language})`);
+  if (original && translated) {
+    const srcPlaceholders = original.match(PLACEHOLDER_REGEX) || [];
+    const dstPlaceholders = translated.match(PLACEHOLDER_REGEX) || [];
+    if (!sameMultiset(srcPlaceholders, dstPlaceholders)) {
+      errs.push(`Placeholder mismatch for ${json.source_path || "(unknown path)"} (${json.target_language || "?"}).`);
+    }
+
+    const srcFenceCount = (original.match(/```/g) || []).length;
+    const dstFenceCount = (translated.match(/```/g) || []).length;
+
+    if (srcFenceCount !== dstFenceCount) {
+      errs.push(`Code fence count mismatch for ${json.source_path || "(unknown path)"} (${json.target_language || "?"}).`);
+    }
+    if (dstFenceCount % 2 !== 0) {
+      errs.push(`Unclosed code fence detected in translation for ${json.source_path || "(unknown path)"} (${json.target_language || "?"}).`);
+    }
+
+    const ratio = translated.length / Math.max(1, original.length);
+    if (ratio < 0.5 || ratio > 2.0) {
+      errs.push(`Length ratio out of bounds for ${json.source_path || "(unknown path)"} (${json.target_language || "?"}) -> ${ratio.toFixed(2)}`);
+    }
   }
 
-  // Length heuristic
-  const ratio = translated.length / Math.max(1, original.length);
-  if (ratio < 0.5 || ratio > 2.0) {
-    errors.push(`Length ratio out of bounds for ${item.json.source_path} (${item.json.target_language}) -> ${ratio.toFixed(2)}`);
+  if (errs.length) {
+    json.verification_errors = errs;
+  } else {
+    delete json.verification_errors;
   }
 
-  if (errors.length) {
-    item.json.verification_errors = errors;
-  }
-
-  return item;
+  return { json };
 });
 ```
 
@@ -417,19 +450,19 @@ Collect all batches back into a single array. Configure the Merge node with:
 
 You can handle persistence in two ways:
 
-**Option A — Respond only (recommended when you cannot store GitHub tokens in n8n)**
+- **Option A — Respond only (recommended when you cannot store GitHub tokens in n8n)**
 
-- Skip the GitHub HTTP Request nodes entirely.
-- Keep `collectTranslations` and `Respond Success` so the webhook returns
-  ```
-  { "translations": [ { "language": "...", "path": "...", "content": "..." } ] }
-  ```
-- The GitHub Action writes files and commits using the built-in `GITHUB_TOKEN`
-  (no PAT required, respects branch protection). This keeps credentials confined
-  to GitHub and satisfies policies that disallow external storage of API keys.
-- The helper script `scripts/request_translation.py` validates each translation
-  entry (`path`, `content`) before writing to disk, ensuring the Action only
-  commits well-formed updates.
+  - Skip the GitHub HTTP Request nodes entirely.
+  - Keep `collectTranslations` and `Respond Success` so the webhook returns
+    ```
+    { "translations": [ { "language": "...", "path": "...", "translated_markdown": "..." } ] }
+    ```
+  - The GitHub Action writes files and commits using the built-in `GITHUB_TOKEN`
+    (no PAT required, respects branch protection). This keeps credentials confined
+    to GitHub and satisfies policies that disallow external storage of API keys.
+  - The helper script `scripts/request_translation.py` validates each translation,
+    prefers `translated_markdown`, derives the locale path from `source_path` + language
+    when necessary, and fails fast if verification errors are present.
 
 **Option B — Commit from n8n (requires GitHub credential)**
 

@@ -53,20 +53,71 @@ def invoke_webhook(
     return response.json()
 
 
-def write_translations(translations: List[Dict[str, str]], repo_root: Path) -> None:
-    required_keys = {"path", "content"}
+def _normalize_entry(
+    entry: Dict[str, Any],
+    default_language: str,
+) -> Dict[str, str]:
+    language_raw = (
+        entry.get("language")
+        or entry.get("target_language")
+        or entry.get("locale")
+    )
+    language = language_raw.lower() if isinstance(language_raw, str) else None
+    path = entry.get("path") or entry.get("target_path")
+    content = (
+        entry.get("translated_markdown")
+        or entry.get("content")
+        or entry.get("markdown")
+        or entry.get("text")
+    )
+    source_path = entry.get("source_path") or entry.get("original_path")
+
+    if not path and source_path and language:
+        path = source_path.replace(
+            f"docs/{default_language}/", f"docs/{language}/"
+        )
+
+    missing = []
+    if not path:
+        missing.append("path/target_path (or source_path+language)")
+    if not content:
+        missing.append("content/translated_markdown")
+
+    if missing:
+        raise KeyError(
+            "Translation entry missing required fields: "
+            + ", ".join(missing)
+        )
+
+    return {"path": path, "content": content}
+
+
+def write_translations(
+    translations: List[Dict[str, Any]],
+    repo_root: Path,
+    default_language: str,
+) -> None:
+    if not translations:
+        print("No translations returned; nothing to write.")
+        return
 
     for index, item in enumerate(translations):
         if not isinstance(item, dict):
             raise TypeError(f"Translation entry at index {index} is not a dict: {item!r}")
 
-        missing = required_keys - item.keys()
-        if missing:
-            raise KeyError(f"Translation entry at index {index} missing keys: {', '.join(sorted(missing))}")
+        if item.get("verification_errors"):
+            raise ValueError(
+                "Translation entry reported verification errors for "
+                f"{item.get('source_path', '<unknown>')} ({item.get('target_language', '?')}): "
+                + "; ".join(item["verification_errors"])
+            )
 
-        target_path = repo_root / item["path"]
+        normalized = _normalize_entry(item, default_language)
+
+        target_path = repo_root / normalized["path"]
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(item["content"], encoding="utf-8")
+        target_path.write_text(normalized["content"], encoding="utf-8")
+        print(f"Wrote translation: {normalized['path']}")
 
 
 def main() -> None:
@@ -106,8 +157,7 @@ def main() -> None:
             "Expected dict with 'translations' key or list of translation items."
         )
 
-    if translations:
-        write_translations(translations, repo_root)
+    write_translations(translations, repo_root, args.default_language)
 
 
 if __name__ == "__main__":
