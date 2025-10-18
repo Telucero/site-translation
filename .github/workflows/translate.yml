@@ -87,9 +87,68 @@ jobs:
             --branch "${{ github.ref }}" \
             --commit "${{ github.sha }}"
 
+      - name: Detect missing localized docs
+        env:
+          DEFAULT_LANGUAGE: ${{ env.DEFAULT_LANGUAGE }}
+          TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
+        run: |
+          python - <<'PY'
+import os
+from pathlib import Path
+
+default_lang = os.environ["DEFAULT_LANGUAGE"]
+target_langs = [lang.strip() for lang in os.environ["TARGET_LANGUAGES"].split() if lang.strip()]
+repo = Path(".").resolve()
+english_root = repo / "docs" / default_lang
+if not english_root.exists():
+    raise SystemExit(f"Expected directory {english_root} to exist.")
+
+missing = set()
+for src in english_root.rglob("*.md"):
+    rel = src.relative_to(english_root)
+    rel_en = Path("docs") / default_lang / rel
+    for lang in target_langs:
+        localized = repo / "docs" / lang / rel
+        if not localized.exists():
+            missing.add(str(rel_en))
+            break
+
+missing_file = Path("missing_docs.txt")
+if missing:
+    missing_file.write_text("\n".join(sorted(missing)), encoding="utf-8")
+    print(f"Missing localized docs detected: {len(missing)}")
+else:
+    missing_file.write_text("", encoding="utf-8")
+    print("All localized docs present.")
+PY
+
+      - name: Backfill missing localized docs
+        env:
+          N8N_WEBHOOK_URL_TR: ${{ secrets.N8N_WEBHOOK_URL_TR }}
+          DEFAULT_LANGUAGE: ${{ env.DEFAULT_LANGUAGE }}
+          TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
+        run: |
+          if [ ! -s missing_docs.txt ]; then
+            echo "No missing docs to translate."
+            exit 0
+          fi
+          if [ -z "$N8N_WEBHOOK_URL_TR" ]; then
+            echo "Missing N8N_WEBHOOK_URL_TR secret" >&2
+            exit 1
+          fi
+          mapfile -t FILE_LIST < missing_docs.txt
+          echo "Requesting translations for missing docs:"
+          printf ' - %s\n' "${FILE_LIST[@]}"
+          python scripts/request_translation.py "${FILE_LIST[@]}" \
+            --webhook-url "$N8N_WEBHOOK_URL_TR" \
+            --languages $TARGET_LANGUAGES \
+            --default-language "$DEFAULT_LANGUAGE" \
+            --branch "${{ github.ref }}" \
+            --commit "${{ github.sha }}"
+
       - name: Cleanup temporary files
         if: ${{ always() }}
-        run: rm -f english_changes.txt
+        run: rm -f english_changes.txt missing_docs.txt
 
       - name: Report localized diff
         if: steps.changes.outputs.count != '0'
