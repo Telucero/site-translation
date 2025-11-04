@@ -7,7 +7,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pull-requests: read
 
 env:
   TARGET_LANGUAGES: es fr pt
@@ -18,6 +19,9 @@ jobs:
   translate:
     runs-on: ubuntu-latest
     if: github.repository_owner != 'dependabot[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
