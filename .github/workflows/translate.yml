@@ -3,11 +3,14 @@ name: Translate Documentation
 on:
   push:
     branches:
-      - main
+      - '**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
-  TARGET_LANGUAGES: es fr pt
+  TARGET_LANGUAGES: es fr
   DEFAULT_LANGUAGE: en
   PYTHON_VERSION: "3.11"
 
@@ -41,8 +44,8 @@ jobs:
       
       - name: Validate inputs
         run: |
-          if [ -z "${{ secrets.N8N_WEBHOOK_URL }}" ]; then
-            echo "Secret N8N_WEBHOOK_URL is required." >&2
+          if [ -z "${{ secrets.N8N_WEBHOOK_URL_TR }}" ]; then
+            echo "Secret N8N_WEBHOOK_URL_TR is required." >&2
             exit 1
           fi
 
@@ -55,17 +58,8 @@ jobs:
             BASE=$(git rev-list --max-parents=0 "$HEAD")
           fi
 
-          LANG_DIR="docs/${{ env.DEFAULT_LANGUAGE }}"
-          TARGETS="${{ env.TARGET_LANGUAGES }}"
-          if [ -d "$LANG_DIR" ]; then
-            git diff --name-only "$BASE" "$HEAD" -- ":(glob)${LANG_DIR}/**/*.md" > english_changes.txt || true
-          else
-            ARGS=(":(glob)docs/**/*.md")
-            for locale in $TARGETS; do
-              ARGS+=(":(exclude)docs/${locale}/**")
-            done
-            git diff --name-only "$BASE" "$HEAD" -- "${ARGS[@]}" > english_changes.txt || true
-          fi
+          git diff --name-only "$BASE" "$HEAD" -- ':(glob)docs/${{ env.DEFAULT_LANGUAGE }}/**/*.md' > english_changes.txt || true
+          # Remove empty lines to avoid passing blank arguments
           sed -i '/^$/d' english_changes.txt || true
           CHANGED_COUNT=$(wc -l < english_changes.txt || echo 0)
 
@@ -74,27 +68,20 @@ jobs:
           cat english_changes.txt >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Mask changed English file paths
-        if: steps.changes.outputs.count != '0'
-        run: |
-          while IFS= read -r file; do
-            [ -n "$file" ] && printf '::add-mask::%s\n' "$file"
-          done < english_changes.txt
-
       - name: Request translations via n8n
         if: steps.changes.outputs.count != '0'
         env:
-          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          N8N_WEBHOOK_URL_TR: ${{ secrets.N8N_WEBHOOK_URL_TR }}
           DEFAULT_LANGUAGE: ${{ env.DEFAULT_LANGUAGE }}
           TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
         run: |
-          if [ -z "$N8N_WEBHOOK_URL" ]; then
-            echo "Missing N8N_WEBHOOK_URL secret" >&2
+          if [ -z "$N8N_WEBHOOK_URL_TR" ]; then
+            echo "Missing N8N_WEBHOOK_URL_TR secret" >&2
             exit 1
           fi
-          python scripts/request_translation.py \
-            --file-list english_changes.txt \
-            --webhook-url "$N8N_WEBHOOK_URL" \
+          mapfile -t FILE_LIST < english_changes.txt
+          python scripts/request_translation.py "${FILE_LIST[@]}" \
+            --webhook-url "$N8N_WEBHOOK_URL_TR" \
             --languages $TARGET_LANGUAGES \
             --default-language "$DEFAULT_LANGUAGE" \
             --branch "${{ github.ref }}" \
@@ -106,41 +93,38 @@ jobs:
           TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
         run: |
           python - <<'PY'
-import os
-from pathlib import Path
+          import os
+          from pathlib import Path
 
-def_lang = os.environ["DEFAULT_LANGUAGE"]
-targets = [lang.strip() for lang in os.environ["TARGET_LANGUAGES"].split() if lang.strip()]
-repo = Path(".").resolve()
-root = repo / "docs" / def_lang
-rel_prefix = Path("docs") / def_lang
-if not root.exists():
-    root = repo / "docs"
-    rel_prefix = Path("docs")
-if not root.exists():
-    raise SystemExit(f"Expected directory {root} to exist.")
+          default_lang = os.environ["DEFAULT_LANGUAGE"]
+          target_langs = [lang.strip() for lang in os.environ["TARGET_LANGUAGES"].split() if lang.strip()]
+          repo = Path(".").resolve()
+          english_root = repo / "docs" / default_lang
+          if not english_root.exists():
+              raise SystemExit(f"Expected directory {english_root} to exist.")
 
-missing = set()
-for src in root.rglob("*.md"):
-    rel = src.relative_to(root)
-    rel_en = rel_prefix / rel
-    for lang in targets:
-        localized = repo / "docs" / lang / rel
-        if not localized.exists():
-            missing.add(str(rel_en))
-            break
+          missing = set()
+          for src in english_root.rglob("*.md"):
+              rel = src.relative_to(english_root)
+              rel_en = Path("docs") / default_lang / rel
+              for lang in target_langs:
+                  localized = repo / "docs" / lang / rel
+                  if not localized.exists():
+                      missing.add(str(rel_en))
+                      break
 
-missing_file = Path("missing_docs.txt")
-if missing:
-    missing_file.write_text("\n".join(sorted(missing)), encoding="utf-8")
-    print(f"Missing localized docs detected: {len(missing)}")
-else:
-    missing_file.write_text("", encoding="utf-8")
-    print("All localized docs present.")
-PY
+          missing_file = Path("missing_docs.txt")
+          if missing:
+              missing_file.write_text("\n".join(sorted(missing)), encoding="utf-8")
+              print(f"Missing localized docs detected: {len(missing)}")
+          else:
+              missing_file.write_text("", encoding="utf-8")
+              print("All localized docs present.")
+          PY
+
       - name: Backfill missing localized docs
         env:
-          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          N8N_WEBHOOK_URL_TR: ${{ secrets.N8N_WEBHOOK_URL_TR }}
           DEFAULT_LANGUAGE: ${{ env.DEFAULT_LANGUAGE }}
           TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
         run: |
@@ -148,87 +132,39 @@ PY
             echo "No missing docs to translate."
             exit 0
           fi
-          if [ -z "$N8N_WEBHOOK_URL" ]; then
-            echo "Missing N8N_WEBHOOK_URL secret" >&2
+          if [ -z "$N8N_WEBHOOK_URL_TR" ]; then
+            echo "Missing N8N_WEBHOOK_URL_TR secret" >&2
             exit 1
           fi
+          mapfile -t FILE_LIST < missing_docs.txt
           echo "Requesting translations for missing docs:"
-          while IFS= read -r file; do
-            [ -n "$file" ] && printf '::add-mask::%s\n' "$file"
-          done < missing_docs.txt
-          python scripts/request_translation.py \
-            --file-list missing_docs.txt \
-            --webhook-url "$N8N_WEBHOOK_URL" \
+          printf ' - %s\n' "${FILE_LIST[@]}"
+          python scripts/request_translation.py "${FILE_LIST[@]}" \
+            --webhook-url "$N8N_WEBHOOK_URL_TR" \
             --languages $TARGET_LANGUAGES \
             --default-language "$DEFAULT_LANGUAGE" \
             --branch "${{ github.ref }}" \
             --commit "${{ github.sha }}"
 
-      - name: Publish translation staging branches
-        if: steps.changes.outputs.count != '0'
-        env:
-          TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
-        run: |
-          set -euo pipefail
-          SHORT_SHA="${GITHUB_SHA:0:12}"
-          RUN_SUFFIX="${GITHUB_RUN_ID:-local}"
-          STAGING_ROOT="$(mktemp -d)"
-          WORKTREE_ROOT="$(mktemp -d)"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          created=0
-          for lang in $TARGET_LANGUAGES; do
-            src_dir="docs/$lang"
-            if [ ! -d "$src_dir" ]; then
-              echo "No translations for $lang; skipping."
-              continue
-            fi
-            if ! find "$src_dir" -type f -name '*.md' -print -quit >/dev/null; then
-              echo "Directory $src_dir has no Markdown changes; skipping."
-              continue
-            fi
-
-            stage_dir="$STAGING_ROOT/$lang"
-            mkdir -p "$stage_dir"
-            rsync -a --delete "$src_dir/" "$stage_dir/"
-
-            branch="translation/${lang}/${SHORT_SHA}-${RUN_SUFFIX}"
-            worktree_path="$WORKTREE_ROOT/$lang"
-            git worktree add -B "$branch" "$worktree_path" "$GITHUB_SHA"
-
-            mkdir -p "$worktree_path/$src_dir"
-            rsync -a --delete "$stage_dir/" "$worktree_path/$src_dir/"
-
-            (
-              cd "$worktree_path"
-              git add "$src_dir"
-              if git diff --cached --quiet; then
-                echo "No new content for $lang; skipping push."
-              else
-                git commit -m "Add $lang translations for $GITHUB_SHA"
-                git push origin HEAD:"$branch"
-                created=$((created + 1))
-              fi
-            )
-
-            git worktree remove "$worktree_path" --force
-          done
-
-          if [ "$created" -eq 0 ]; then
-            echo "No translation branches were created."
-          fi
-
       - name: Cleanup temporary files
         if: ${{ always() }}
         run: rm -f english_changes.txt missing_docs.txt
 
-      - name: Build MkDocs site
-        env:
-          TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
+      - name: Report localized diff
+        if: steps.changes.outputs.count != '0'
         run: |
-          for lang in $TARGET_LANGUAGES; do
-            mkdir -p "docs/$lang"
-          done
-          mkdocs build
+          if git diff --quiet --exit-code; then
+            echo "::warning ::No localized files were generated by n8n response."
+          else
+            git status -sb
+          fi
+
+      - name: Build MkDocs site
+        run: mkdocs build
+
+      - name: Commit localized updates
+        if: steps.changes.outputs.count != '0'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update localized docs"
+          branch: ${{ github.ref_name }}

@@ -66,10 +66,21 @@ def collect_documents(
     documents: List[Dict[str, Any]] = []
     total_bytes = 0
 
-    for path in files:
+    for original in files:
+        path = Path(original)
+        if not path.is_absolute():
+            path = path
+        # Normalise English files so they live under docs/<default_language>/...
+        if path.parts and path.parts[0] == "docs":
+            parts = list(path.parts)
+            if len(parts) == 1:
+                parts.append("index.md")
+            if len(parts) == 1 or parts[1] != default_language:
+                relative = Path(*parts[1:]) if len(parts) > 1 else Path()
+                path = Path("docs") / default_language / relative
         absolute = repo_root / path
         if not absolute.exists():
-            raise FileNotFoundError(f"File {absolute} not found.")
+            raise FileNotFoundError(f"File {absolute} not found (original reference: {original}).")
 
         content = absolute.read_text(encoding="utf-8")
         byte_length = len(content.encode("utf-8"))
