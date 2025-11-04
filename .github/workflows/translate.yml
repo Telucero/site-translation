@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  TARGET_LANGUAGES: es fr
+  TARGET_LANGUAGES: es fr pt
   DEFAULT_LANGUAGE: en
   PYTHON_VERSION: "3.11"
 
