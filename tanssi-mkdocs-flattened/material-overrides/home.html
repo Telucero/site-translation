@@ -1,0 +1,97 @@
+{% extends "main.html" %} 
+
+{% block htmltitle %} 
+  {%- if page.is_homepage -%}
+    <title>Tanssi Docs</title>
+  {%- endif -%} 
+{% endblock %} 
+
+{% block styles %}
+	{{ super() }}
+  <link rel="stylesheet" href="{{ 'assets/stylesheets/home.css' | url }}">
+{% endblock %}
+
+{% block content %}
+  <div class="home md-typeset">
+    <div class="hero-section">
+      <video autoplay muted loop class="background-video">
+        <source src="assets/images/home-background.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+      <div class="hero-content">
+        <h1>Tanssi <span class="shadow">&lt;Dev&gt;</span> Site</h1>
+        <h2>Build, launch, and scale Symbiotic Networks faster with Tanssi's infrastructure, tools, and integrations.</h2>
+        <div class="hero-grid">
+          <div class="hero-card">
+            <h3>Launch a Tanssi-Powered Network</h3>
+            <p>Get tools and guides to launch your network in minutes.</p>
+            <a href="/builders/build/">
+              <button class="md-button">Get Started</button>
+            </a>
+          </div>
+          <div class="hero-card">
+            <h3>Develop using EVM Tools</h3>
+            <p>Leverage popular EVM tools to accelerate your development.</p>
+            <a href="/builders/toolkit/ethereum-api/">
+              <button class="md-button">Learn More</button>
+            </a>
+          </div>
+          <div class="hero-card">
+            <h3>Explore Technical Concepts</h3>
+            <p>Learn Tanssi's features, services, and security via Symbiotic.</p>
+            <a href="/learn/tanssi/">
+              <button class="md-button">Learn More</button>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="feature-section">
+      <div class="column">
+        <h2>The One Stop-Hub For Tanssi <span class="highlight">Builders</span></h2>
+        <p>Explore more ways to engage with the Tanssi ecosystem—access funding, resources, and visibility for your project.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="column">
+          <div class="feature-card-background one">
+            <a class="feature-card" href="https://www.tanssi.foundation/tanssi-grants-program/tanssi-grants-application" target="_blank">
+              <div class="feature-badge">Ecosystem</div>
+              <h3>Apply for a Grant</h3>
+              <img src="{{ '/assets/images/arrow.webp' }}" alt="Navigate to the Apply for a Grant page"/>
+            </a>
+          </div>
+        </div>
+        <div class="column">
+          <div class="feature-card-background two">
+            <a class="feature-card" href="https://apps.tanssi.network/" target="_blank">
+              <div class="feature-badge">Start Building</div>
+              <h3>Visit the TestNet</h3>
+              <img src="{{ '/assets/images/arrow.webp' }}" alt="Navigate to the TestNet page"/>
+            </a>
+          </div>
+          <div class="feature-card-background three">
+            <a class="feature-card" href="https://www.tanssi.network/blog" target="_blank">
+              <div class="feature-badge">Industry Insights</div>
+              <h3>Ecosystem Updates</h3>
+              <img src="{{ '/assets/images/arrow.webp' }}" alt="Navigate to the Ecosystem Updates page"/>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="section-separator">
+      <img src="{{ '/assets/images/feature-background.webp' }}" alt="Multicolor decorative design of Tanssi"/>
+    </div>
+    <div class="community-section">
+      <h2>Join the Tanssi <span class="highlight">Dev</span> Community</h2>
+      <div class="community-buttons">
+        <a href="https://discord.com/invite/tanssi" target="_blank">
+          <button class="md-button primary">Join Discord</button>
+        </a>
+        <a href="https://www.tanssi.network/community/newsletter" target="_blank">
+          <button class="md-button secondary">Subscribe</button>
+        </a>
+      </div>
+    </div>
+  </div>
+{% endblock %}
