@@ -108,7 +108,7 @@ plugins:
   - glightbox
   - macros:
       include_yaml:
-        - docs/variables.yml
+        - docs/en/variables.yml
   - minify:
       minify_html: true
       minify_js: true
