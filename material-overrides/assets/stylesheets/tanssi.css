@@ -1141,3 +1141,119 @@ rect[style] {
     display: block;
   }
 }
+
+
+.language-picker {
+  position: relative;
+  margin-right: 1rem;
+}
+
+.language-picker__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1rem;
+  border-radius: var(--border-radius-pill-button);
+  border: 1px solid var(--white-smoke-transparent-35);
+  background: var(--rich-black-transparent-30);
+  color: var(--white-smoke);
+  font-family: var(--md-header-font);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.language-picker__toggle svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+.language-picker__toggle svg:last-child {
+  margin-left: -0.1rem;
+}
+
+.language-picker__toggle:hover,
+.language-picker__toggle:focus-visible {
+  outline: none;
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--black);
+}
+
+.language-picker__menu {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  min-width: 11rem;
+  padding: 0.35rem 0;
+  background: var(--rich-black);
+  border: 1px solid var(--white-smoke-transparent-20);
+  border-radius: var(--border-radius-20);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+  z-index: 40;
+}
+
+.language-picker__menu ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.language-picker__menu a {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 1rem;
+  color: var(--white-smoke);
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.language-picker__menu a:hover,
+.language-picker__menu a:focus-visible,
+.language-picker__menu a.is-active {
+  outline: none;
+  color: var(--teal);
+  background: rgba(112, 233, 233, 0.12);
+}
+
+.language-picker:focus-within .language-picker__menu,
+.language-picker:hover .language-picker__menu {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.language-picker__label {
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+}
+
+.language-picker__menu .language-code {
+  font-family: var(--md-header-font);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.language-picker__menu .language-name {
+  font-size: 0.8rem;
+}
+
+@media screen and (max-width: 75em) {
+  .language-picker {
+    margin-right: 0.35rem;
+  }
+
+  .language-picker__toggle {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+  }
+}
