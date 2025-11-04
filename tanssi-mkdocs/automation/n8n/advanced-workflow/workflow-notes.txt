@@ -1,0 +1,25 @@
+Multilingual MkDocs Translation (advanced)
+========================================
+
+Flow summary:
+- Webhook receives payload from GitHub Action (documents, target_languages, metadata).
+- Validate Payload node checks for required fields and archive metadata.
+- Expand Archive inflates optional gzip/base64 bundle into `documents`.
+- Prepare Jobs fans out one item per (document, locale) pair.
+- Split In Batches and Translate stand in for the external provider call.
+- Assemble Results rewrites target paths (swapping `docs/<default>/` for `docs/<locale>/` or prefixing `docs/<locale>/`) and groups the localized Markdown entries returned to the Action.
+
+Expected payload blueprint:
+{
+  "branch": "refs/heads/main",
+  "commit": "<sha>",
+  "default_language": "en",
+  "target_languages": ["es", "fr", "pt"],
+  "documents": [
+    {"path": "docs/index.md", "language": "en", "checksum": "…", "content": "…"}
+  ],
+  "documents_manifest": [...],
+  "documents_archive": "<optional base64 gzip>"
+}
+
+The Action now always supplies `documents_manifest`, and switches to `documents_archive` when the combined Markdown payload exceeds `--archive-threshold-bytes` (default 2 MB). The workflow rehydrates that archive before preparing translation jobs.
