@@ -1,8 +1,0 @@
-title: Network Development Framework
-hide: false
-nav:
-  - index.md
-  - 'Overview': 'overview.md'
-  - 'Framework Architecture': 'architecture.md'
-  - 'Modularity': 'modules.md'
-  # - 'Native Cross-Chain Communication': 'xcm.md'

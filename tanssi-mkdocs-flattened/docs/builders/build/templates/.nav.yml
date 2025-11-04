@@ -1,8 +1,0 @@
-title: Network Templates
-hide: false
-nav:
-  - index.md
-  - 'Overview': 'overview.md'
-  - 'Substrate': 'substrate.md'
-  - 'EVM': 'evm.md'
-  - 'Custom Runtime': 'custom-runtime.md'
