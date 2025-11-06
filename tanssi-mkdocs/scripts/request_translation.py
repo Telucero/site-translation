@@ -155,7 +155,19 @@ def invoke_webhook(
 
     response = requests.post(webhook_url, json=payload, timeout=timeout)
     response.raise_for_status()
-    return response.json()
+    body = response.content.strip()
+    if not body:
+        return {"translations": []}
+    try:
+        return response.json()
+    except ValueError as exc:
+        preview = response.text.strip()
+        if len(preview) > 200:
+            preview = preview[:200] + "..."
+        raise RuntimeError(
+            f"Webhook returned non-JSON response (status {response.status_code}): "
+            f"{preview or '<empty response>'}"
+        ) from exc
 
 
 def _normalize_entry(
