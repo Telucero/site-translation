@@ -14,7 +14,7 @@ env:
   TARGET_LANGUAGES: es fr pt
   DEFAULT_LANGUAGE: en
   PYTHON_VERSION: "3.11"
-  FORCED_TRANSLATION_FILES: |
+  FORCED_TRANSLATION_FILES: |-
     docs/en/learn/framework/overview.md
     docs/en/learn/framework/modules.md
 
@@ -130,12 +130,7 @@ jobs:
             if [ -s translation_targets.txt ]; then
               printf '\n' >> translation_targets.txt
             fi
-            while IFS= read -r forced_file; do
-              [ -z "$forced_file" ] && continue
-              printf '%s\n' "$forced_file"
-            done >> translation_targets.txt <<EOF
-            ${FORCED_TRANSLATION_FILES}
-            EOF
+            printf '%s\n' "${FORCED_TRANSLATION_FILES}" >> translation_targets.txt
           fi
           # Normalise, drop blanks, dedupe
           sort -u translation_targets.txt -o translation_targets.txt || true
