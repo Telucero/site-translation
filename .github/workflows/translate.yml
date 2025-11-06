@@ -134,8 +134,8 @@ jobs:
               [ -z "$forced_file" ] && continue
               printf '%s\n' "$forced_file"
             done >> translation_targets.txt <<EOF
-${FORCED_TRANSLATION_FILES}
-EOF
+            ${FORCED_TRANSLATION_FILES}
+            EOF
           fi
           # Normalise, drop blanks, dedupe
           sort -u translation_targets.txt -o translation_targets.txt || true
