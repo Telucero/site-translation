@@ -66,18 +66,53 @@ def collect_documents(
     documents: List[Dict[str, Any]] = []
     total_bytes = 0
 
-    for path in files:
-        absolute = repo_root / path
-        if not absolute.exists():
-            raise FileNotFoundError(f"File {absolute} not found.")
+    for candidate in files:
+        path = Path(candidate)
+        if path.is_absolute():
+            absolute_path = path
+            try:
+                payload_path = path.relative_to(repo_root)
+            except ValueError:
+                payload_path = path
+        else:
+            search_paths = [
+                repo_root / path,
+                repo_root / "tanssi-mkdocs" / path,
+            ]
+            if path.parts and path.parts[0] == "tanssi-mkdocs":
+                without_prefix = Path(*path.parts[1:])
+                search_paths.append(repo_root / without_prefix)
+                search_paths.append(repo_root / "tanssi-mkdocs" / without_prefix)
+            absolute_path = next((item for item in search_paths if item.exists()), None)
+            if absolute_path is None:
+                raise FileNotFoundError(
+                    f"File {path} not found relative to repository root {repo_root}."
+                )
+            payload_path = path
 
-        content = absolute.read_text(encoding="utf-8")
+        payload_parts = list(payload_path.parts)
+        if payload_parts and payload_parts[0] == "tanssi-mkdocs":
+            payload_parts = payload_parts[1:]
+            payload_path = Path(*payload_parts) if payload_parts else Path()
+
+        if payload_parts and payload_parts[0] != "docs":
+            payload_path = Path("docs") / Path(*payload_parts)
+            payload_parts = list(payload_path.parts)
+
+        if payload_parts and payload_parts[0] == "docs":
+            if len(payload_parts) == 1:
+                payload_parts.append("index.md")
+            if len(payload_parts) == 1 or payload_parts[1] != default_language:
+                relative = Path(*payload_parts[1:]) if len(payload_parts) > 1 else Path()
+                payload_path = Path("docs") / default_language / relative
+
+        content = absolute_path.read_text(encoding="utf-8")
         byte_length = len(content.encode("utf-8"))
         total_bytes += byte_length
 
         documents.append(
             {
-                "path": str(path),
+                "path": str(payload_path),
                 "language": default_language,
                 "checksum": _compute_sha256(content),
                 "content": content,
@@ -235,7 +270,11 @@ def write_translations(
 
         normalized = _normalize_entry(item, default_language)
 
-        target_path = repo_root / normalized["path"]
+        relative_path = Path(normalized["path"])
+        target_path = repo_root / relative_path
+        if not target_path.parent.exists():
+            alternate = repo_root / "tanssi-mkdocs" / relative_path
+            target_path = alternate
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(normalized["content"], encoding="utf-8")
         written += 1

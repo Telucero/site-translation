@@ -63,6 +63,7 @@ jobs:
           fi
 
           git diff --name-only "$BASE" "$HEAD" -- ':(glob)tanssi-mkdocs/docs/${{ env.DEFAULT_LANGUAGE }}/**/*.md' > english_changes.txt || true
+          sed -i 's#^tanssi-mkdocs/docs/#docs/#' english_changes.txt || true
           # Remove empty lines to avoid passing blank arguments
           sed -i '/^$/d' english_changes.txt || true
           CHANGED_COUNT=$(wc -l < english_changes.txt || echo 0)
@@ -93,7 +94,7 @@ jobs:
           missing = set()
           for src in english_root.rglob("*.md"):
               rel = src.relative_to(english_root)
-              rel_en = Path("tanssi-mkdocs") / "docs" / default_lang / rel
+              rel_en = Path("docs") / default_lang / rel
               for lang in target_langs:
                   localized = docs_root / lang / rel
                   if not localized.exists():
