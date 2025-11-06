@@ -165,6 +165,65 @@ jobs:
             --branch "${{ github.ref }}" \
             --commit "${{ github.sha }}"
 
+      - name: Commit forced translations to current branch
+        if: steps.targets.outputs.count != '0'
+        env:
+          TARGET_LANGUAGES: ${{ env.TARGET_LANGUAGES }}
+          DEFAULT_LANGUAGE: ${{ env.DEFAULT_LANGUAGE }}
+          FORCED_TRANSLATION_FILES: ${{ env.FORCED_TRANSLATION_FILES }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FORCED_TRANSLATION_FILES}" ]; then
+            echo "No forced translation files configured."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          staged=0
+          while IFS= read -r forced_file; do
+            [ -z "$forced_file" ] && continue
+
+            case "$forced_file" in
+              docs/${DEFAULT_LANGUAGE}/*) suffix="${forced_file#docs/${DEFAULT_LANGUAGE}/}" ;;
+              docs/*) suffix="${forced_file#docs/}" ;;
+              *)
+                echo "Skipping forced path '$forced_file' (expected under docs/)."
+                continue
+                ;;
+            esac
+
+            for lang in $TARGET_LANGUAGES; do
+              localized="tanssi-mkdocs/docs/${lang}/${suffix}"
+              if [ -f "$localized" ]; then
+                git add "$localized"
+                staged=1
+              else
+                echo "Localized file not found for $lang: $localized"
+              fi
+            done
+          done <<'EOF'
+${{ env.FORCED_TRANSLATION_FILES }}
+EOF
+
+          if [ "$staged" -eq 0 ]; then
+            echo "No forced translation files to commit."
+            git reset --quiet
+            exit 0
+          fi
+
+          if git diff --cached --quiet; then
+            echo "Forced translation files staged but no differences detected."
+            git reset --quiet
+            exit 0
+          fi
+
+          git commit -m "chore: update forced translations"
+          git push origin HEAD:"$BASE_BRANCH"
+
       - name: Cleanup temporary files
         if: ${{ always() }}
         run: rm -f english_changes.txt missing_docs.txt translation_targets.txt
