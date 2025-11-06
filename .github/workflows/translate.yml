@@ -62,7 +62,7 @@ jobs:
             BASE=$(git rev-list --max-parents=0 "$HEAD")
           fi
 
-          git diff --name-only "$BASE" "$HEAD" -- ':(glob)docs/${{ env.DEFAULT_LANGUAGE }}/**/*.md' > english_changes.txt || true
+          git diff --name-only "$BASE" "$HEAD" -- ':(glob)tanssi-mkdocs/docs/${{ env.DEFAULT_LANGUAGE }}/**/*.md' > english_changes.txt || true
           # Remove empty lines to avoid passing blank arguments
           sed -i '/^$/d' english_changes.txt || true
           CHANGED_COUNT=$(wc -l < english_changes.txt || echo 0)
@@ -85,16 +85,17 @@ jobs:
           default_lang = os.environ["DEFAULT_LANGUAGE"]
           target_langs = [lang.strip() for lang in os.environ["TARGET_LANGUAGES"].split() if lang.strip()]
           repo = Path(".").resolve()
-          english_root = repo / "docs" / default_lang
+          docs_root = repo / "tanssi-mkdocs" / "docs"
+          english_root = docs_root / default_lang
           if not english_root.exists():
               raise SystemExit(f"Expected directory {english_root} to exist.")
 
           missing = set()
           for src in english_root.rglob("*.md"):
               rel = src.relative_to(english_root)
-              rel_en = Path("docs") / default_lang / rel
+              rel_en = Path("tanssi-mkdocs") / "docs" / default_lang / rel
               for lang in target_langs:
-                  localized = repo / "docs" / lang / rel
+                  localized = docs_root / lang / rel
                   if not localized.exists():
                       missing.add(str(rel_en))
                       break
@@ -167,7 +168,7 @@ jobs:
 
       - name: Build MkDocs site
         if: steps.targets.outputs.count != '0'
-        run: mkdocs build
+        run: mkdocs build --config-file tanssi-mkdocs/mkdocs.yml
 
       - name: Publish localized branches and PRs
         if: steps.targets.outputs.count != '0'
@@ -188,12 +189,12 @@ jobs:
           : > "$LANG_LIST"
 
           for lang in $TARGET_LANGUAGES; do
-            if git diff --quiet --exit-code -- "docs/$lang/"; then
+            if git diff --quiet --exit-code -- "tanssi-mkdocs/docs/$lang/"; then
               echo "No updates detected for $lang; skipping patch capture."
               continue
             fi
             patch_file="$PATCH_ROOT/$lang.patch"
-            git diff --binary -- "docs/$lang" > "$patch_file"
+            git diff --binary -- "tanssi-mkdocs/docs/$lang" > "$patch_file"
             if [ ! -s "$patch_file" ]; then
               rm -f "$patch_file"
               continue
@@ -215,7 +216,7 @@ jobs:
             echo "::group::Preparing branch $branch"
             git checkout -B "$branch" "$BASE_BRANCH"
             git apply "$patch_file"
-            git add "docs/$lang"
+            git add "tanssi-mkdocs/docs/$lang"
             if git diff --cached --quiet; then
               echo "No staged changes for $lang; skipping branch creation."
               git checkout "$BASE_BRANCH"
