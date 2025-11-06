@@ -50,7 +50,7 @@ jobs:
           pip install -r requirements.txt
       
 
-          
+
       - name: Validate inputs
         run: |
           if [ -z "${{ secrets.N8N_WEBHOOK_URL_TR }}" ]; then
@@ -206,8 +206,8 @@ jobs:
               fi
             done
           done <<'EOF'
-${{ env.FORCED_TRANSLATION_FILES }}
-EOF
+          ${{ env.FORCED_TRANSLATION_FILES }}
+          EOF
 
           if [ "$staged" -eq 0 ]; then
             echo "No forced translation files to commit."
