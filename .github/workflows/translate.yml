@@ -14,6 +14,9 @@ env:
   TARGET_LANGUAGES: es fr pt
   DEFAULT_LANGUAGE: en
   PYTHON_VERSION: "3.11"
+  FORCED_TRANSLATION_FILES: |
+    docs/en/learn/framework/overview.md
+    docs/en/learn/framework/modules.md
 
 jobs:
   translate:
@@ -122,6 +125,9 @@ jobs:
           fi
           if [ -f missing_docs.txt ]; then
             cat missing_docs.txt >> translation_targets.txt
+          fi
+          if [ -n "${FORCED_TRANSLATION_FILES}" ]; then
+            printf '%s\n' "${FORCED_TRANSLATION_FILES}" >> translation_targets.txt
           fi
           # Normalise, drop blanks, dedupe
           sort -u translation_targets.txt -o translation_targets.txt || true
