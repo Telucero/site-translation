@@ -638,8 +638,16 @@ def _run_pipeline(args: argparse.Namespace) -> int:
 
     target_files = _collect_target_files(translations)
     markdown_suffixes = {".md", ".markdown", ".mkd"}
+    def _normalize_lang_prefix(path: Path) -> Path:
+        parts = list(path.parts)
+        if parts:
+            parts[0] = parts[0].lower()
+        return Path(*parts)
+
     mdformat_targets = [
-        path for path in target_files if path.suffix.lower() in markdown_suffixes
+        _normalize_lang_prefix(path)
+        for path in target_files
+        if path.suffix.lower() in markdown_suffixes
     ]
     if mdformat_targets:
         file_args = " ".join(shlex.quote(str(path)) for path in mdformat_targets)
