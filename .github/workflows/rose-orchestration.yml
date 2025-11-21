@@ -93,7 +93,10 @@ jobs:
             fi
           else
             branch="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
-            diff_base="origin/${branch}"
+            diff_base="${{ github.event.before }}"
+            if [[ -z "$diff_base" || "$diff_base" == "0000000000000000000000000000000000000000" ]]; then
+              diff_base="origin/${branch}"
+            fi
             diff_head="HEAD"
             pr_base="${branch}"
             pr_number=""
