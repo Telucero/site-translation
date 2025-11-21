@@ -136,7 +136,6 @@ def build_markdown(summary_path: Path) -> str:
     if locale_unused_section:
         blocks.extend(locale_unused_section)
         blocks.append("")
-    blocks.append("")
     validation_block = data.get("validation") or {
         "status": data.get("validation_status", "unknown"),
     }
