@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - Multi-translation-testing
   workflow_dispatch:
     inputs:
       base_ref:
