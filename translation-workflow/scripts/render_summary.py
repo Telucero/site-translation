@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
 
 
 def _format_missing(data: dict[str, list[str]]) -> list[str]:
@@ -50,12 +50,37 @@ def _format_unused(keys: list[str]) -> list[str]:
     return lines
 
 
+def _group_validation_issues(validation: dict[str, Any]) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    issues: List[dict[str, Any]] = list(validation.get("issues") or [])
+
+    if issues:
+        for issue in issues:
+            lang = issue.get("language") or issue.get("target_language") or "unknown"
+            path = issue.get("target_path") or issue.get("source_path") or "unknown"
+            grouped.setdefault(lang, {}).setdefault(path, []).append(issue)
+
+    if grouped:
+        return grouped
+
+    issues_by_language: Dict[str, Any] = validation.get("issues_by_language") or {}
+    for lang, payload in issues_by_language.items():
+        files = payload.get("files", {})
+        for path, file_issues in files.items():
+            for issue in file_issues:
+                entry = dict(issue)
+                entry.setdefault("language", lang)
+                entry.setdefault("target_path", path)
+                grouped.setdefault(lang, {}).setdefault(path, []).append(entry)
+    return grouped
+
+
 def _format_validation(validation: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     lines.append("#### Validation status")
     status = validation.get("status", "unknown")
     issue_count = validation.get("issue_count", len(validation.get("issues", [])))
-    issues_by_language = validation.get("issues_by_language", {})
+    grouped = _group_validation_issues(validation)
 
     if status == "passed":
         lines.append("- ✅ Structural validation passed.")
@@ -69,26 +94,24 @@ def _format_validation(validation: dict[str, Any]) -> list[str]:
     else:
         lines.append("- ❌ Validation reported issues but no details were captured.")
 
-    if not issues_by_language:
-        lines.append("  - No structured issue breakdown available.")
+    if not grouped:
+        lines.append("  - No structured issue breakdown available. See translation-workflow/translations/validation_report.json.")
         return lines
 
-    for lang, payload in sorted(issues_by_language.items()):
-        lang_count = payload.get("count", 0)
-        lines.append(f"  - `{lang}`: {lang_count} issue(s)")
-        files = payload.get("files", {})
-        for idx, (path, file_issues) in enumerate(sorted(files.items()), start=1):
-            if idx > 3:
-                lines.append("    - …")
-                break
+    lines.append("- Detailed discrepancies:")
+    for lang in sorted(grouped.keys()):
+        files = grouped[lang]
+        total_for_lang = sum(len(items) for items in files.values())
+        lines.append(f"  - Locale `{lang}` ({total_for_lang} issue(s))")
+        for path, file_issues in sorted(files.items()):
             lines.append(f"    - `{path}`")
-            for issue in file_issues[:2]:
-                line_hint = f"L{issue.get('line')} · " if issue.get("line") else ""
-                lines.append(
-                    f"      - {line_hint}[{issue.get('issue_type')}] {issue.get('message')}"
-                )
-            if len(file_issues) > 2:
-                lines.append("      - …")
+            for issue in sorted(file_issues, key=lambda item: item.get("line") or 0):
+                line_num = issue.get("line")
+                line_hint = f"L{line_num}" if line_num else "line n/a"
+                issue_type = issue.get("issue_type") or "validation_issue"
+                message = issue.get("message") or "See validation report for details."
+                lines.append(f"      - {line_hint}: [{issue_type}] {message}")
+    lines.append("  - Full details: translation-workflow/translations/validation_report.json")
     return lines
 
 
@@ -103,8 +126,9 @@ def build_markdown(summary_path: Path) -> str:
     blocks.append("")
     validation_block = data.get("validation") or {
         "status": data.get("validation_status", "unknown"),
-        "issues": data.get("validation_issues", []),
     }
+    if not validation_block.get("issues"):
+        validation_block["issues"] = data.get("validation_issues", [])
     blocks.extend(_format_validation(validation_block))
     return "\n".join(blocks).strip() + "\n"
 
