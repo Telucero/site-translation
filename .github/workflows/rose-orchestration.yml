@@ -148,12 +148,19 @@ jobs:
           echo "Running: ${CMD[*]}"
           "${CMD[@]}"
 
+      - name: Prepare temporary summary directory
+        if: ${{ always() }}
+        id: temp_summary
+        run: |
+          TMP_DIR=$(mktemp -d)
+          echo "dir=$TMP_DIR" >> "$GITHUB_OUTPUT"
+
       - name: Generate summary markdown
         if: ${{ always() }}
         shell: bash
         run: |
-          SUMMARY_JSON="translation-workflow/translations/summary_report.json"
-          SUMMARY_MD="translation-workflow/translations/summary.md"
+          SUMMARY_JSON="${{ steps.temp_summary.outputs.dir }}/summary_report.json"
+          SUMMARY_MD="${{ steps.temp_summary.outputs.dir }}/summary.md"
           if [[ ! -f "$SUMMARY_JSON" ]]; then
             echo '{}' > "$SUMMARY_JSON"
           fi
@@ -165,7 +172,7 @@ jobs:
         if: ${{ always() }}
         shell: bash
         run: |
-          SUMMARY_MD="translation-workflow/translations/summary.md"
+          SUMMARY_MD="${{ steps.temp_summary.outputs.dir }}/summary.md"
           if [[ -f "$SUMMARY_MD" ]]; then
             cat "$SUMMARY_MD" >> "$GITHUB_STEP_SUMMARY"
           else
@@ -180,7 +187,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore(rose): sync translations for ${{ steps.refs.outputs.languages }}"
           title: "chore(rose): sync translations for ${{ steps.refs.outputs.languages }}"
-          body-path: translation-workflow/translations/summary.md
+          body-path: ${{ steps.temp_summary.outputs.dir }}/summary.md
           branch: rose/translations/${{ github.run_id }}
           base: ${{ steps.refs.outputs.pr_base }}
           draft: false
@@ -201,11 +208,13 @@ jobs:
       - name: Comment on PR with summary
         if: ${{ always() && steps.pr_target.outputs.number != '' }}
         uses: actions/github-script@v7
+        env:
+          SUMMARY_MD_PATH: ${{ steps.temp_summary.outputs.dir }}/summary.md
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const summaryPath = 'translation-workflow/translations/summary.md';
+            const summaryPath = process.env.SUMMARY_MD_PATH;
             if (!fs.existsSync(summaryPath)) {
               core.info('Summary markdown not found; skipping PR comment.');
               return;
