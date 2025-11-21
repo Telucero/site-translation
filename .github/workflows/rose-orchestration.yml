@@ -111,6 +111,8 @@ jobs:
       # 1) Fetch the repo so the pipeline can diff and modify files.
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2) Install a consistent Python interpreter for all helper scripts.
       - name: Set up Python
