@@ -131,7 +131,13 @@ def _payload_entries_list(translations: Any) -> list[dict[str, Any]]:
     if isinstance(translations, dict) and isinstance(translations.get("entries"), list):
         return translations["entries"]
     if isinstance(translations, list):
-        return translations
+        flattened: list[dict[str, Any]] = []
+        for item in translations:
+            if isinstance(item, dict) and isinstance(item.get("entries"), list):
+                flattened.extend(item["entries"])
+            elif isinstance(item, dict):
+                flattened.append(item)
+        return flattened
     return []
 
 
@@ -614,6 +620,8 @@ def _reset_translation_stage() -> None:
 
 
 def _cleanup_translation_stage() -> None:
+    if os.environ.get("ROSE_PRESERVE_TRANSLATIONS"):
+        return
     if TRANSLATION_STAGE.exists():
         shutil.rmtree(TRANSLATION_STAGE)
 
