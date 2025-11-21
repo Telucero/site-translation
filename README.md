@@ -1,56 +1,88 @@
-# Documentation Translation Demo
+# Mkdocs Framework and Material Theme for the Tanssi Documentation Site
 
-This repository demonstrates how to translate MkDocs-powered documentation (English source) into multiple languages using GitHub Actions, n8n, and an external translation service.
+https://docs.tanssi.network
 
-## Quick Start
+This repo contains the mkdocs config files, theme overrides and css changes.
+
+- [Mkdocs](https://www.mkdocs.org/)
+- [Material for Mkdocs](https://squidfunk.github.io/mkdocs-material/)
+
+The actual content is stored in the tanssi-docs repo and pulled into the tanssi-docs sub-directory during build.
+
+- [Tanssi Docs](https://github.com/moondance-labs/tanssi-docs)
+
+## Prerequisites
+
+To get started you need to have [mkdocs](https://www.mkdocs.org/) installed. All dependencies can be installed with a single command, you can run:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+## Getting started
+
+With the dependencies installed, let's proceed to clone the necessary repos. In order for everything to work correctly the file structure needs to be the following:
+
+```text
+tanssi-mkdocs
+|--- /material-overrides/ (folder)
+|--- /tanssi-docs/ (repository)
+|--- mkdocs.yml
+```
+
+So first, lets clone this repository:
+
+```bash
+git clone https://github.com/moondance-labs/tanssi-mkdocs
+cd tanssi-mkdocs
+```
+
+Next, inside the folder just created, clone the [tanssi-docs repository](https://github.com/moondance-labs/tanssi-docs):
+
+```bash
+git clone https://github.com/moondance-labs/tanssi-docs
+```
+
+Now in the `tanssi-mkdocs` folder (which should be the current one) you can build the site by running:
+
+```bash
+cd ..
 mkdocs serve
 ```
 
-Preview the site at `http://127.0.0.1:8000/en/`. Language variants for Spanish and French are generated with the `mkdocs-static-i18n` plugin.
+After a successful build, the site should be available at `http://127.0.0.1:8000`
 
-## Repository Structure
+## Editing Theme Files
 
-- `mkdocs.yml` — MkDocs configuration with i18n settings.
-- `docs/` — English source content (`docs/en/`) and sample translated output (`docs/es/`, `docs/fr/`).
-- `scripts/request_translation.py` — Utility script invoked by CI to call n8n and write localized Markdown.
-- `.github/workflows/translate.yml` — GitHub Action triggered on merges to `main`, wiring translations and MkDocs builds.
-- `automation/` — Prompts, n8n workflow guide, and storage strategy documentation.
-- `ARCHITECTURE.md` — Comparison of viable automation patterns.
+If you're editing any of the files in the `material-overrides` directory, you can run the following command to watch for these changes and render them automatically:
 
-## Configure GitHub Action
+```bash
+mkdocs serve --watch-theme
+```
 
-1. Add the secret `N8N_WEBHOOK_URL` pointing to your n8n webhook endpoint.
-2. Adjust `TARGET_LANGUAGES` in `.github/workflows/translate.yml` to list the locales you want to produce.
-3. Optionally tweak `requirements.txt` or the Python version to match production.
+Otherwise, you'll need to stop the server (`control + C`) and restart it (`mkdocs serve`) to see the changes.
 
-## n8n Workflow
+## Ignoring Excluded Docs Output
 
-Follow `automation/n8n/README.md` to build the workflow responding to GitHub payloads:
+Running `mkdocs serve` displays the excluded documents in your terminal. To prevent this effect, you can run:
 
-- Webhook trigger.
-- Function nodes to fan out jobs per language.
-- HTTP Request node to the translation provider.
-- Response node returning localized Markdown.
+```bash
+mkdocs serve --clean
+```
 
-## Adding Languages
+## Disable the Git Dates Plugin
 
-1. Update `languages` and `nav_translations` in `mkdocs.yml`.
-2. Extend `TARGET_LANGUAGES` in the GitHub Action.
-3. Provide glossary entries in `automation/prompts/`.
-4. Ensure the n8n workflow fans out to the new locale.
+The `git-revision-date-localized` plugin pulls the date of the last git modification of a page. When developing locally, this can slow down your development process, as every time a change is made to a page, the plugin checks for the latest dates for all the pages. To avoid this, you can change your start-up command to disable the plugin by running:
 
-## Storage & Scaling
+```bash
+export ENABLED_GIT_REVISION_DATE=false
+mkdocs serve
+```
 
-See `automation/storage.md` for trade-offs between Git-backed, object storage, and database-backed approaches as the number of languages increases.
+## Improve Reload Times with Dirty Builds
 
-## Local Verification
+To speed up reload times when running `mkdocs serve`, you can use the `--dirty` flag, which will only reload the pages that have been changed. This will take reload times from ~50 seconds to ~3 seconds.
 
-- `mkdocs serve` — Live reload preview.
-- `mkdocs build` — Static build with translation directories under `site/`.
-
-Commit changes and push to GitHub to exercise the full translation pipeline.
+```bash
+mkdocs serve --dirty
+```
