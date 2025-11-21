@@ -172,8 +172,8 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: chore(rose): sync translations for ${{ steps.refs.outputs.languages }}
-          title: chore(rose): sync translations for ${{ steps.refs.outputs.languages }}
+          commit-message: "chore(rose): sync translations for ${{ steps.refs.outputs.languages }}"
+          title: "chore(rose): sync translations for ${{ steps.refs.outputs.languages }}"
           body-path: translation-workflow/translations/summary.md
           branch: rose/translations/${{ github.run_id }}
           base: ${{ steps.refs.outputs.pr_base }}
