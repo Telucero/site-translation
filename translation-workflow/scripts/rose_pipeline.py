@@ -638,7 +638,6 @@ def _run_pipeline(args: argparse.Namespace) -> int:
 
     target_files = _collect_target_files(translations)
     markdown_suffixes = {".md", ".markdown", ".mkd"}
-
     def _normalize_lang_prefix(path: Path) -> Path:
         parts = list(path.parts)
         if parts:
