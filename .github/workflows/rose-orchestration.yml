@@ -75,6 +75,7 @@ jobs:
       ROSE_INCLUDE_FILES: ${{ github.event_name == 'workflow_dispatch' && inputs.file_filter || '' }}
       ROSE_INCLUDE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.include_full || '' }}
       ROSE_LANGUAGES: ${{ vars.ROSE_LANGUAGES || 'es fr pt' }}
+      ROSE_TRANSLATION_BRANCH: rose/translations/${{ github.run_id }}
     steps:
       - name: Determine translation parameters
         id: refs
@@ -184,19 +185,70 @@ jobs:
             echo "Summary markdown not found; skipping job summary update."
           fi
 
-      - name: Create translation pull request
-        id: create_pr
-        if: ${{ steps.refs.outputs.pr_number == '' }}
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(rose): sync translations for ${{ steps.refs.outputs.languages }}"
-          title: "chore(rose): sync translations for ${{ steps.refs.outputs.languages }}"
-          body-path: ${{ steps.temp_summary.outputs.dir }}/summary.md
-          branch: rose/translations/${{ github.run_id }}
-          base: ${{ steps.refs.outputs.pr_base }}
-          draft: false
-          delete-branch: true
+      - name: Push translation branch
+        id: push_branch
+        shell: bash
+        env:
+          TRANSLATION_BRANCH: ${{ env.ROSE_TRANSLATION_BRANCH }}
+          COMMIT_MESSAGE: "chore(rose): sync translations for ${{ steps.refs.outputs.languages }}"
+        run: |
+          set -euo pipefail
+          restore_commit="$(git rev-parse HEAD)"
+          restore_branch="$(git symbolic-ref --quiet --short HEAD || true)"
+          changes="$(git status --porcelain)"
+          echo "branch=${TRANSLATION_BRANCH}" >> "$GITHUB_OUTPUT"
+          if [[ -z "$changes" ]]; then
+            echo "No translation changes detected; skipping branch push."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$TRANSLATION_BRANCH"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit; skipping branch push."
+            if [[ -n "$restore_branch" ]]; then
+              git checkout "$restore_branch"
+            else
+              git checkout --detach "$restore_commit"
+            fi
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "$COMMIT_MESSAGE"
+          git push --force-with-lease origin "$TRANSLATION_BRANCH"
+          if [[ -n "$restore_branch" ]]; then
+            git checkout "$restore_branch"
+          else
+            git checkout --detach "$restore_commit"
+          fi
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Post translation branch instructions
+        if: ${{ always() }}
+        shell: bash
+        env:
+          TRANSLATION_BRANCH: ${{ steps.push_branch.outputs.branch }}
+          PUSHED: ${{ steps.push_branch.outputs.pushed }}
+          BASE_BRANCH: ${{ steps.refs.outputs.pr_base }}
+        run: |
+          if [[ -z "${TRANSLATION_BRANCH}" ]]; then
+            exit 0
+          fi
+          {
+            echo "### Translation branch"
+            echo ""
+            if [[ "${PUSHED}" == "true" ]]; then
+              echo "- Branch with translations: \`${TRANSLATION_BRANCH}\`"
+              echo "- Base branch: \`${BASE_BRANCH}\`"
+              echo "- Summary file: \`translation-workflow/translations/summary_report.json\`"
+              echo ""
+              echo "Open a pull request manually from the branch above (automation disabled by request)."
+            else
+              echo "- No translation changes were committed during this run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resolve PR number for reporting
         if: ${{ always() }}
@@ -204,11 +256,11 @@ jobs:
         shell: bash
         run: |
           pr_number="${{ steps.refs.outputs.pr_number }}"
-          created="${{ steps.create_pr.outputs.pull-request-number }}"
-          if [[ -z "$pr_number" && -n "$created" ]]; then
-            pr_number="$created"
+          if [[ -n "$pr_number" ]]; then
+            echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=" >> "$GITHUB_OUTPUT"
           fi
-          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR with summary
         if: ${{ always() && steps.pr_target.outputs.number != '' }}
