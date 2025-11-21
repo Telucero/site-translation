@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -37,6 +38,7 @@ LOCALE_SYNC = CURRENT_DIR / "locale_sync.py"
 LOCALE_REPORT = TRANSLATION_STAGE / "locale_report.json"
 COVERAGE_REPORT = TRANSLATION_STAGE / "summary_report.json"
 VALIDATION_REPORT = TRANSLATION_STAGE / "validation_report.json"
+VALIDATION_PAYLOAD_SNAPSHOT = TRANSLATION_STAGE / "validation_payload_snapshot.json"
 LANGUAGE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}(?:[-_][A-Za-z]{2})?$")
 
 
@@ -123,6 +125,96 @@ def _collect_target_files(translations: Any) -> list[Path]:
         if resolved and resolved not in files:
             files.append(resolved)
     return files
+
+
+def _payload_entries_list(translations: Any) -> list[dict[str, Any]]:
+    if isinstance(translations, dict) and isinstance(translations.get("entries"), list):
+        return translations["entries"]
+    if isinstance(translations, list):
+        return translations
+    return []
+
+
+def _summarize_payload_segments(entries: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group payload entries per language with path + line ranges for reporting."""
+    segments: dict[str, list[dict[str, Any]]] = {}
+    for entry in entries:
+        languages: list[str] = []
+        if entry.get("target_languages"):
+            languages = [str(lang) for lang in entry["target_languages"] if lang]
+        elif entry.get("target_language"):
+            languages = [str(entry["target_language"])]
+        if not languages:
+            continue
+
+        source_path = entry.get("target_path") or entry.get("source_path")
+        range_info = entry.get("range") or {}
+        start = range_info.get("start")
+        end = range_info.get("end")
+        for lang in languages:
+            normalized_lang = _normalize_language(lang)
+            segments.setdefault(normalized_lang, []).append(
+                {
+                    "path": source_path,
+                    "start": start,
+                    "end": end,
+                    "kind": entry.get("kind"),
+                }
+            )
+    return segments
+
+
+def _sanitize_payload_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    sanitized = copy.deepcopy(entry)
+    sanitized.pop("provider_metadata", None)
+    return sanitized
+
+
+def _match_issue_payload_entries(issue: dict[str, Any], payload_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    issue_lang = issue.get("language") or issue.get("target_language")
+    normalized_issue_lang = _normalize_language(issue_lang) if issue_lang else None
+    issue_path = issue.get("target_path") or issue.get("source_path")
+    normalized_issue_path = Path(issue_path).as_posix() if issue_path else None
+
+    for entry in payload_entries:
+        entry_lang = entry.get("target_language") or entry.get("language")
+        normalized_entry_lang = _normalize_language(entry_lang) if entry_lang else None
+        if normalized_issue_lang and normalized_entry_lang and normalized_issue_lang != normalized_entry_lang:
+            continue
+        entry_path = entry.get("target_path") or entry.get("source_path")
+        normalized_entry_path = Path(entry_path).as_posix() if entry_path else None
+        if normalized_issue_path and normalized_entry_path and normalized_issue_path != normalized_entry_path:
+            continue
+        matches.append(entry)
+    return matches
+
+
+def _write_validation_snapshot(
+    payload_entries: list[dict[str, Any]],
+    validation_summary: dict[str, Any],
+    summary_payload: dict[str, Any],
+) -> None:
+    sanitized_entries = [_sanitize_payload_entry(entry) for entry in payload_entries]
+    issues_with_payload: list[dict[str, Any]] = []
+    issues = validation_summary.get("issues", []) or []
+    for issue in issues:
+        issue_copy = copy.deepcopy(issue)
+        matches = _match_issue_payload_entries(issue, sanitized_entries)
+        if matches:
+            issue_copy["payload_entries"] = matches
+        issues_with_payload.append(issue_copy)
+
+    snapshot = {
+        "summary": summary_payload,
+        "validation": validation_summary,
+        "payload_entries": sanitized_entries,
+        "issues_with_payload": issues_with_payload,
+    }
+    VALIDATION_PAYLOAD_SNAPSHOT.write_text(
+        json.dumps(snapshot, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _normalize_language(lang: str) -> str:
@@ -611,6 +703,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
         or response_payload
     )
     PAYLOAD_PATH.write_text(json.dumps(translations, indent=2, ensure_ascii=False), encoding="utf-8")
+    payload_entries = _payload_entries_list(translations)
 
     _run_cmd([PYTHON_BIN, "-m", "pip", "install", "ruamel.yaml"])
     _run_cmd([PYTHON_BIN, str(CURRENT_DIR / "extract_strings.py"), "--payload", str(PAYLOAD_PATH)])
@@ -637,6 +730,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
     _run_cmd([PYTHON_BIN, str(CURRENT_DIR / "format_locale_yaml.py")])
 
     target_files = _collect_target_files(translations)
+    payload_segments = _summarize_payload_segments(payload_entries)
     markdown_suffixes = {".md", ".markdown", ".mkd"}
     def _normalize_lang_prefix(path: Path) -> Path:
         parts = list(path.parts)
@@ -703,11 +797,16 @@ def _run_pipeline(args: argparse.Namespace) -> int:
         "validation_status": validation_block["status"],
         "validation_issue_count": validation_block["issue_count"],
         "validation_issues": validation_summary.get("issues", []),
+        "payload_entry_count": len(payload_entries),
+        "localized_file_changes": len(target_files),
+        "diff_file_count": len(english_files),
+        "payload_segments": payload_segments,
     }
     COVERAGE_REPORT.write_text(
         json.dumps(summary_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    _write_validation_snapshot(payload_entries, validation_summary, summary_payload)
 
     print("Rose pipeline completed successfully.")
     return 0

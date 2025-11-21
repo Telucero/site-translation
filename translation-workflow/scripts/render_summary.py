@@ -8,41 +8,49 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
-def _format_missing(data: dict[str, list[str]]) -> list[str]:
+def _format_payload(data: dict[str, list[dict[str, Any]]], total_sent: int) -> list[str]:
+    if total_sent == 0:
+        return []
     lines: list[str] = []
-    lines.append("#### Translation coverage")
+    lines.append("#### Translation payload")
     if not data:
-        lines.append("- No files required translation.")
+        lines.append("- Files were sent for translation but no per-language metadata was recorded.")
         return lines
-    for lang, paths in sorted(data.items()):
-        if not paths:
-            lines.append(f"- `{lang}`: ✅ up to date")
-        else:
-            lines.append(f"- `{lang}`: ❌ missing {len(paths)} file(s)")
-            for path in paths[:5]:
-                lines.append(f"  - `{path}`")
-            if len(paths) > 5:
-                lines.append("  - ...")
+    for lang, entries in sorted(data.items()):
+        if not entries:
+            continue
+        lines.append(f"- `{lang}`: {len(entries)} file(s)/block(s) processed")
+        for entry in entries[:5]:
+            path = entry.get("path") or entry.get("file") or entry.get("target_path") or entry.get("source_path") or "unknown"
+            start = entry.get("start")
+            end = entry.get("end")
+            if start and end:
+                line_hint = f"L{start}" if start == end else f"L{start}-{end}"
+            elif start:
+                line_hint = f"L{start}"
+            else:
+                line_hint = "line n/a"
+            lines.append(f"  - `{path}` ({line_hint})")
+        if len(entries) > 5:
+            lines.append("  - ...")
     return lines
 
 
 def _format_locale_added(data: dict[str, int]) -> list[str]:
+    if not data:
+        return []
     lines: list[str] = []
     lines.append("#### Locale key additions")
-    if not data:
-        lines.append("- No new locale keys were added.")
-        return lines
     for locale, count in sorted(data.items()):
         lines.append(f"- `{locale}`: {count} new key(s)")
     return lines
 
 
 def _format_unused(keys: list[str]) -> list[str]:
+    if not keys:
+        return []
     lines: list[str] = []
     lines.append("#### Locale keys unused in templates")
-    if not keys:
-        lines.append("- No unused locale keys detected.")
-        return lines
     for key in keys[:10]:
         lines.append(f"- `{key}`")
     if len(keys) > 10:
@@ -82,21 +90,17 @@ def _format_validation(validation: dict[str, Any]) -> list[str]:
     issue_count = validation.get("issue_count", len(validation.get("issues", [])))
     grouped = _group_validation_issues(validation)
 
-    if status == "passed":
-        lines.append("- ✅ Structural validation passed.")
-        return lines
-    if status not in {"failed", "warning"}:
-        lines.append("- ⚠️ Validation status unknown.")
-        return lines
-
-    if issue_count:
-        lines.append(f"- ❌ {issue_count} issue(s) detected across translations.")
-    else:
-        lines.append("- ❌ Validation reported issues but no details were captured.")
-
     if not grouped:
-        lines.append("  - No structured issue breakdown available. See translation-workflow/translations/validation_report.json.")
         return lines
+
+    if status == "passed":
+        status_label = "passed"
+    elif status in {"failed", "warning"}:
+        status_label = status
+    else:
+        status_label = "unknown"
+
+    lines.append(f"- ❌ Validation reported {issue_count or sum(len(items) for files in grouped.values() for items in files.values())} issue(s) (status: {status_label}).")
 
     lines.append("- Detailed discrepancies:")
     for lang in sorted(grouped.keys()):
@@ -117,20 +121,33 @@ def _format_validation(validation: dict[str, Any]) -> list[str]:
 
 def build_markdown(summary_path: Path) -> str:
     data = json.loads(summary_path.read_text(encoding="utf-8"))
-    blocks: list[str] = ["### Translation Summary"]
-    blocks.extend(_format_missing(data.get("missing_per_language", {})))
-    blocks.append("")
-    blocks.extend(_format_locale_added(data.get("locale_added_per_locale", {})))
-    blocks.append("")
-    blocks.extend(_format_unused(data.get("locale_unused_keys", [])))
-    blocks.append("")
+    payload_count = data.get("payload_entry_count", 0)
+    localized_changes = data.get("localized_file_changes", 0)
+    blocks: list[str] = [f"### Translation Summary · {payload_count} file(s) sent · {localized_changes} localized file change(s)"]
+    payload_section = _format_payload(data.get("payload_segments", {}), payload_count)
+    if payload_section:
+        blocks.extend(payload_section)
+        blocks.append("")
+    locale_added_section = _format_locale_added(data.get("locale_added_per_locale", {}))
+    if locale_added_section:
+        blocks.extend(locale_added_section)
+        blocks.append("")
+    locale_unused_section = _format_unused(data.get("locale_unused_keys", []))
+    if locale_unused_section:
+        blocks.extend(locale_unused_section)
+        blocks.append("")
     validation_block = data.get("validation") or {
         "status": data.get("validation_status", "unknown"),
     }
     if not validation_block.get("issues"):
         validation_block["issues"] = data.get("validation_issues", [])
-    blocks.extend(_format_validation(validation_block))
-    return "\n".join(blocks).strip() + "\n"
+    validation_section = _format_validation(validation_block)
+    if validation_section:
+        blocks.extend(validation_section)
+    markdown = "\n".join(blocks).strip()
+    if not markdown.endswith("\n"):
+        markdown += "\n"
+    return markdown
 
 
 def main() -> int:

@@ -185,6 +185,19 @@ jobs:
             echo "Summary markdown not found; skipping job summary update."
           fi
 
+      - name: Upload translation reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rose-validation-${{ github.run_id }}
+          path: |
+            translation-workflow/translations/summary_report.json
+            translation-workflow/translations/validation_report.json
+            translation-workflow/translations/validation_payload_snapshot.json
+            translation-workflow/translations/payload.json
+          retention-days: 3
+          if-no-files-found: warn
+
       - name: Push translation branch
         id: push_branch
         shell: bash
