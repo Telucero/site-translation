@@ -139,6 +139,7 @@ jobs:
           fi
 
           LANGS="${{ steps.refs.outputs.languages }}"
+          export ROSE_PRESERVE_TRANSLATIONS=1
 
           CMD=(python translation-workflow/scripts/rose_pipeline.py \
             --base "${{ steps.refs.outputs.diff_base }}" \
@@ -197,6 +198,10 @@ jobs:
             translation-workflow/translations/payload.json
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Cleanup translation artifacts
+        if: ${{ always() }}
+        run: rm -rf translation-workflow/translations
 
       - name: Push translation branch
         id: push_branch
