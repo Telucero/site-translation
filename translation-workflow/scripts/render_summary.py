@@ -144,6 +144,15 @@ def build_markdown(summary_path: Path) -> str:
     validation_section = _format_validation(validation_block)
     if validation_section:
         blocks.extend(validation_section)
+    pretty_json = json.dumps(data, ensure_ascii=False, indent=2)
+    blocks.append("")
+    blocks.append("<details><summary>Full summary_report.json</summary>")
+    blocks.append("")
+    blocks.append("```json")
+    blocks.append(pretty_json)
+    blocks.append("```")
+    blocks.append("</details>")
+
     markdown = "\n".join(blocks).strip()
     if not markdown.endswith("\n"):
         markdown += "\n"
