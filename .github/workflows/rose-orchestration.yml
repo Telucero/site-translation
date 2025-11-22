@@ -166,7 +166,7 @@ jobs:
         if: ${{ always() }}
         shell: bash
         run: |
-          SUMMARY_JSON="${{ steps.temp_summary.outputs.dir }}/summary_report.json"
+          SUMMARY_JSON="translation-workflow/translations/summary_report.json"
           SUMMARY_MD="${{ steps.temp_summary.outputs.dir }}/summary.md"
           if [[ ! -f "$SUMMARY_JSON" ]]; then
             echo '{}' > "$SUMMARY_JSON"
