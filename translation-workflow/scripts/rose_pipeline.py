@@ -404,6 +404,10 @@ def _as_bool(value: str) -> bool:
 def _should_skip_path(rel_path: str, languages: list[str], skip_llms: bool, skip_ai: bool) -> bool:
     normalized = repo_relative_str(rel_path)
     lower = normalized.lower()
+    if normalized.startswith(".github/") or normalized == ".github":
+        return True
+    if normalized.startswith("translation-workflow/scripts/") or normalized == "translation-workflow/scripts":
+        return True
     if skip_llms and "llms" in lower:
         return True
     if skip_ai and "/.ai" in lower:
@@ -474,11 +478,21 @@ def _derive_target_path(rel_path: str, language: str) -> str:
     return str(path)
 
 
+def _read_file_at_ref(ref: str, rel_path: str) -> str | None:
+    git_path = repo_relative_str(rel_path)
+    cmd = ["git", "-C", str(REPO_ROOT), "show", f"{ref}:{git_path}"]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
 def _build_payload_entries(
     diff_map: dict[str, list[dict[str, Any]]],
     languages: list[str],
     skip_llms: bool,
     skip_ai: bool,
+    head_ref: str,
 ) -> tuple[list[dict[str, Any]], Set[str]]:
     entries: list[dict[str, Any]] = []
     english_files: Set[str] = set()
@@ -487,10 +501,15 @@ def _build_payload_entries(
         if _should_skip_path(normalized_path, languages, skip_llms, skip_ai):
             continue
         abs_path = repo_path(normalized_path)
-        if not abs_path.exists():
-            continue
-        english_text = abs_path.read_text(encoding="utf-8")
-        lines = _read_lines(abs_path)
+        if abs_path.exists():
+            english_text = abs_path.read_text(encoding="utf-8")
+            lines = _read_lines(abs_path)
+        else:
+            english_text = _read_file_at_ref(head_ref, normalized_path)
+            if english_text is None:
+                _debug(f"Missing {normalized_path} in working tree and ref {head_ref}; skipping.")
+                continue
+            lines = english_text.splitlines()
         english_files.add(normalized_path)
         tagged_full = _run_tagger(english_text)
         file_entry = {
@@ -702,6 +721,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
         args.languages,
         _as_bool(args.filter_llms),
         _as_bool(args.filter_ai_dir),
+        args.head,
     )
     _debug(f"Prepared {len(entries)} translation job(s) from {len(english_files)} English file(s).")
     if english_files:
