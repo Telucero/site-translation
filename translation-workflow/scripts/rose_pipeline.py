@@ -42,6 +42,10 @@ VALIDATION_PAYLOAD_SNAPSHOT = TRANSLATION_STAGE / "validation_payload_snapshot.j
 LANGUAGE_CODE_PATTERN = re.compile(r"^[A-Za-z]{2}(?:[-_][A-Za-z]{2})?$")
 
 
+def _debug(message: str) -> None:
+    print(f"[rose][debug] {message}")
+
+
 def _read_lines(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines()
 
@@ -651,6 +655,13 @@ def _run_pipeline(args: argparse.Namespace) -> int:
         ]
 
     include_files = {_normalize_path(path) for path in args.include_files if path.strip()}
+    _debug(f"Base ref: {args.base}")
+    _debug(f"Head ref: {args.head}")
+    _debug(f"Paths: {', '.join(args.paths) if args.paths else '.'}")
+    _debug(f"Languages: {', '.join(args.languages)}")
+    _debug(f"Env include files: {env_include_files!r}")
+    _debug(f"CLI include files: {sorted(include_files)}")
+    _debug(f"Include full files: {args.include_full}")
     if include_files:
         print("Restricting translation to the following file(s):")
         for rel_path in sorted(include_files):
@@ -664,8 +675,20 @@ def _run_pipeline(args: argparse.Namespace) -> int:
 
     diff_text = _run_git_diff(args.base, args.head, args.paths)
     diff_map = _collect_sets(diff_text)
+    diff_file_count = len(diff_map)
+    diff_block_count = sum(len(items) for items in diff_map.values())
+    _debug(f"Detected {diff_block_count} diff block(s) across {diff_file_count} file(s).")
+    if diff_file_count:
+        preview_files = sorted(diff_map.keys())[:5]
+        for path in preview_files:
+            _debug(f"  diff file: {path} ({len(diff_map[path])} block(s))")
     if include_files:
         diff_map = _filter_diff_map(diff_map, include_files)
+        filtered_file_count = len(diff_map)
+        filtered_block_count = sum(len(items) for items in diff_map.values())
+        _debug(
+            f"After include-files filter: {filtered_block_count} block(s) across {filtered_file_count} file(s)."
+        )
         if args.include_full:
             _inject_full_file_entries(diff_map, include_files)
         if not diff_map:
@@ -680,6 +703,11 @@ def _run_pipeline(args: argparse.Namespace) -> int:
         _as_bool(args.filter_llms),
         _as_bool(args.filter_ai_dir),
     )
+    _debug(f"Prepared {len(entries)} translation job(s) from {len(english_files)} English file(s).")
+    if english_files:
+        preview_sources = sorted(english_files)[:5]
+        for path in preview_sources:
+            _debug(f"  source file: {path}")
     if not entries:
         print("No eligible additions detected; exiting cleanly.")
         return 0
