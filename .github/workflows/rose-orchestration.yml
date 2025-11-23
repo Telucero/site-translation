@@ -86,6 +86,8 @@ jobs:
               echo "$ref"
             elif [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
               echo "$ref"
+            elif [[ "$ref" == refs/* ]]; then
+              echo "$ref"
             elif [[ "$ref" == origin/* ]]; then
               echo "$ref"
             else
