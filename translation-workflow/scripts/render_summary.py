@@ -218,7 +218,7 @@ def build_markdown(summary_path: Path) -> str:
 
     blocks.append("")
     blocks.append("#### Support resources")
-    blocks.append("Support links are stored in LastPass; please unlock the shared vault to access them.")
+    blocks.append("For support resources please check in the shared note.")
 
     pretty_json = json.dumps(data, ensure_ascii=False, indent=2)
     blocks.append("")
