@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       base_ref:
-        description: 'Which branch/commit should be treated as "English baseline"? (ex: origin/main)'
+        description: 'Which branch/commit should be treated as "English baseline"? (ex: main)'
         required: true
-        default: 'origin/main'
+        default: 'main'
       head_ref:
         description: 'Which branch/commit contains the new content you want translated?'
         required: true
@@ -86,9 +86,11 @@ jobs:
               echo "$ref"
             elif [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
               echo "$ref"
-            elif [[ "$ref" == refs/* ]]; then
-              echo "$ref"
+            elif [[ "$ref" == refs/heads/* ]]; then
+              echo "origin/${ref#refs/heads/}"
             elif [[ "$ref" == origin/* ]]; then
+              echo "$ref"
+            elif [[ "$ref" == refs/* ]]; then
               echo "$ref"
             else
               echo "origin/$ref"
@@ -143,7 +145,7 @@ jobs:
               return
             fi
             if [[ "$normalized" == origin/* ]]; then
-              git fetch origin "${normalized#origin/}:${normalized#origin/}"
+              git fetch origin "${normalized#origin/}"
             else
               git fetch origin "$normalized:$normalized"
             fi
