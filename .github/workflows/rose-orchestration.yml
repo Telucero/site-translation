@@ -24,10 +24,6 @@ on:
         description: 'Set to true to send full files (even if only a line changed)'
         required: false
         default: 'false'
-      pr_number:
-        description: 'Optional PR number to post the summary comment to'
-        required: false
-        default: ''
       file_filter:
         description: 'Optional comma/newline separated list of files to translate (repo-relative paths)'
         required: false
@@ -82,11 +78,26 @@ jobs:
         shell: bash
         run: |
           DEFAULT_LANGS="${ROSE_LANGUAGES:-es fr pt}"
+          normalize_ref() {
+            local ref="$1"
+            if [[ -z "$ref" ]]; then
+              echo ""
+            elif [[ "$ref" == "HEAD" ]]; then
+              echo "$ref"
+            elif [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+              echo "$ref"
+            elif [[ "$ref" == origin/* ]]; then
+              echo "$ref"
+            else
+              echo "origin/$ref"
+            fi
+          }
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            diff_base="${{ inputs.base_ref }}"
-            diff_head="${{ inputs.head_ref }}"
-            pr_base="${{ inputs.head_ref }}"
-            pr_number="${{ inputs.pr_number }}"
+            raw_base="${{ inputs.base_ref }}"
+            raw_head="${{ inputs.head_ref }}"
+            diff_base="$(normalize_ref "$raw_base")"
+            diff_head="$(normalize_ref "$raw_head")"
+            pr_base="$raw_head"
             if [[ -n "${{ inputs.languages }}" ]]; then
               langs="${{ inputs.languages }}"
             else
@@ -100,7 +111,6 @@ jobs:
             fi
             diff_head="HEAD"
             pr_base="${branch}"
-            pr_number=""
             langs="$DEFAULT_LANGS"
           fi
           echo "diff_base=$diff_base" >> "$GITHUB_OUTPUT"
@@ -114,6 +124,28 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Fetch manual dispatch refs
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          fetch_ref() {
+            local ref="$1"
+            if [[ -z "$ref" || "$ref" == "HEAD" || "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+              return
+            fi
+            if [[ "$ref" == origin/* ]]; then
+              git fetch origin "${ref#origin/}:${ref#origin/}"
+            else
+              git fetch origin "$ref:$ref"
+            fi
+          }
+          fetch_ref "$BASE_REF"
+          fetch_ref "$HEAD_REF"
 
       # 2) Install a consistent Python interpreter for all helper scripts.
       - name: Set up Python
