@@ -24,10 +24,6 @@ on:
         description: 'Set to true to send full files (even if only a line changed)'
         required: false
         default: 'false'
-      pr_number:
-        description: 'Optional PR number to post the summary comment to'
-        required: false
-        default: ''
       file_filter:
         description: 'Optional comma/newline separated list of files to translate (repo-relative paths)'
         required: false
@@ -82,11 +78,28 @@ jobs:
         shell: bash
         run: |
           DEFAULT_LANGS="${ROSE_LANGUAGES:-es fr pt}"
+          normalize_ref() {
+            local ref="$1"
+            if [[ -z "$ref" ]]; then
+              echo ""
+            elif [[ "$ref" == "HEAD" ]]; then
+              echo "$ref"
+            elif [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+              echo "$ref"
+            elif [[ "$ref" == refs/* ]]; then
+              echo "$ref"
+            elif [[ "$ref" == origin/* ]]; then
+              echo "$ref"
+            else
+              echo "origin/$ref"
+            fi
+          }
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            diff_base="${{ inputs.base_ref }}"
-            diff_head="${{ inputs.head_ref }}"
-            pr_base="${{ inputs.head_ref }}"
-            pr_number="${{ inputs.pr_number }}"
+            raw_base="${{ inputs.base_ref }}"
+            raw_head="${{ inputs.head_ref }}"
+            diff_base="$(normalize_ref "$raw_base")"
+            diff_head="$(normalize_ref "$raw_head")"
+            pr_base="$raw_head"
             if [[ -n "${{ inputs.languages }}" ]]; then
               langs="${{ inputs.languages }}"
             else
@@ -100,13 +113,11 @@ jobs:
             fi
             diff_head="HEAD"
             pr_base="${branch}"
-            pr_number=""
             langs="$DEFAULT_LANGS"
           fi
           echo "diff_base=$diff_base" >> "$GITHUB_OUTPUT"
           echo "diff_head=$diff_head" >> "$GITHUB_OUTPUT"
           echo "pr_base=$pr_base" >> "$GITHUB_OUTPUT"
-          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "languages=$langs" >> "$GITHUB_OUTPUT"
 
       # 1) Fetch the repo so the pipeline can diff and modify files.
@@ -114,6 +125,34 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Fetch manual dispatch refs
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          BASE_REF: ${{ steps.refs.outputs.diff_base }}
+          HEAD_REF: ${{ steps.refs.outputs.diff_head }}
+        run: |
+          set -euo pipefail
+          fetch_ref() {
+            local ref="$1"
+            if [[ -z "$ref" ]]; then
+              return
+            fi
+            if [[ "$ref" == "HEAD" ]]; then
+              return
+            fi
+            if [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+              return
+            fi
+            if [[ "$ref" == origin/* ]]; then
+              git fetch origin "${ref#origin/}"
+            else
+              git fetch origin "$ref"
+            fi
+          }
+          fetch_ref "$BASE_REF"
+          fetch_ref "$HEAD_REF"
 
       # 2) Install a consistent Python interpreter for all helper scripts.
       - name: Set up Python
@@ -267,99 +306,3 @@ jobs:
               echo "- No translation changes were committed during this run."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Resolve PR number for reporting
-        if: ${{ always() }}
-        id: pr_target
-        shell: bash
-        run: |
-          pr_number="${{ steps.refs.outputs.pr_number }}"
-          if [[ -n "$pr_number" ]]; then
-            echo "number=$pr_number" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Comment on PR with summary
-        if: ${{ always() && steps.pr_target.outputs.number != '' }}
-        uses: actions/github-script@v7
-        env:
-          SUMMARY_MD_PATH: ${{ steps.temp_summary.outputs.dir }}/summary.md
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const summaryPath = process.env.SUMMARY_MD_PATH;
-            if (!fs.existsSync(summaryPath)) {
-              core.info('Summary markdown not found; skipping PR comment.');
-              return;
-            }
-            const body = fs.readFileSync(summaryPath, 'utf8');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: Number('${{ steps.pr_target.outputs.number }}'),
-              body,
-            });
-
-      - name: Inline validation review comments
-        if: ${{ always() && steps.pr_target.outputs.number != '' }}
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const reportPath = 'translation-workflow/translations/validation_report.json';
-            if (!fs.existsSync(reportPath)) {
-              core.info('Validation report not found; skipping inline comments.');
-              return;
-            }
-            const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-            if (!report.issues || report.issues.length === 0) {
-              core.info('No validation issues detected; no inline comments to post.');
-              return;
-            }
-            const prNumber = Number('${{ steps.pr_target.outputs.number }}');
-            const { data: pr } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-            });
-            const commitId = pr.head.sha;
-            let comments = 0;
-            for (const issue of report.issues) {
-              if (comments >= 20) {
-                core.info('Reached inline comment cap (20).');
-                break;
-              }
-              const filePath = issue.target_path || issue.source_path;
-              if (!filePath) {
-                continue;
-              }
-              const line = issue.line || 1;
-              const messageParts = [
-                `**${issue.issue_type || 'validation_issue'}**`,
-                issue.message || 'See validation report for details.',
-              ];
-              if (issue.details && Object.keys(issue.details).length) {
-                messageParts.push('', '```json', JSON.stringify(issue.details, null, 2), '```');
-              }
-              try {
-                await github.rest.pulls.createReviewComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: prNumber,
-                  commit_id: commitId,
-                  path: filePath,
-                  line,
-                  side: 'RIGHT',
-                  body: messageParts.join('\n'),
-                });
-                comments += 1;
-              } catch (error) {
-                core.warning(`Unable to post inline validation comment for ${filePath}:${line} - ${error.message}`);
-              }
-            }
-            if (comments === 0) {
-              core.info('Inline validation comments skipped (no eligible paths/lines).');
-            }
