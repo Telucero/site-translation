@@ -8,9 +8,9 @@ on:
         required: true
         default: 'main'
       head_ref:
-        description: 'Which branch/commit contains the new content you want translated?'
+        description: 'Which branch contains the new content you want translated?'
         required: true
-        default: 'HEAD'
+        default: ''
       languages:
         description: 'Two-letter locale codes to translate (separate with spaces, e.g. "es fr pt")'
         required: false
