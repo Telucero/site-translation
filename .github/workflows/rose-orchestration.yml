@@ -1,11 +1,6 @@
 name: rose-orchestration
 
 on:
-  push:
-    branches:
-      - main
-      - master
-      - Multi-translation-testing
   workflow_dispatch:
     inputs:
       base_ref:
