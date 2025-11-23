@@ -119,6 +119,71 @@ def _format_validation(validation: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _format_file_details(summary: dict[str, Any]) -> list[str]:
+    payload_segments = summary.get("payload_segments") or {}
+    file_details: dict[str, dict[str, Any]] = {}
+
+    for language, entries in payload_segments.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            path = (
+                entry.get("path")
+                or entry.get("file")
+                or entry.get("target_path")
+                or entry.get("source_path")
+                or "unknown"
+            )
+            normalized_path = str(path)
+            payload_entry = {
+                "language": language,
+                "kind": entry.get("kind"),
+                "start": entry.get("start"),
+                "end": entry.get("end"),
+            }
+            sanitized_entry = {k: v for k, v in payload_entry.items() if v is not None}
+            file_details.setdefault(normalized_path, {}).setdefault("payload_entries", []).append(sanitized_entry)
+
+    validation_block = summary.get("validation") or {
+        "status": summary.get("validation_status", "unknown"),
+    }
+    if not validation_block.get("issues"):
+        validation_block["issues"] = summary.get("validation_issues", [])
+    grouped_validation = _group_validation_issues(validation_block)
+    for language, files in grouped_validation.items():
+        for path, issues in files.items():
+            normalized_path = str(path or "unknown")
+            formatted_issues: list[dict[str, Any]] = []
+            for issue in issues:
+                formatted_issue = {
+                    "language": language,
+                    "issue_type": issue.get("issue_type"),
+                    "line": issue.get("line"),
+                    "message": issue.get("message"),
+                }
+                details = issue.get("details")
+                if details:
+                    formatted_issue["details"] = details
+                formatted_issues.append({k: v for k, v in formatted_issue.items() if v is not None})
+            if formatted_issues:
+                file_details.setdefault(normalized_path, {}).setdefault("validation_issues", []).extend(formatted_issues)
+
+    lines: list[str] = []
+    if not file_details:
+        return lines
+    for path in sorted(file_details.keys()):
+        pretty_json = json.dumps(file_details[path], ensure_ascii=False, indent=2)
+        lines.append(f"<details><summary>`{path}` details</summary>")
+        lines.append("")
+        lines.append("```json")
+        lines.append(pretty_json)
+        lines.append("```")
+        lines.append("</details>")
+    return lines
+
+
 def build_markdown(summary_path: Path) -> str:
     data = json.loads(summary_path.read_text(encoding="utf-8"))
     payload_count = data.get("payload_entry_count", 0)
@@ -144,6 +209,12 @@ def build_markdown(summary_path: Path) -> str:
     validation_section = _format_validation(validation_block)
     if validation_section:
         blocks.extend(validation_section)
+
+    file_detail_sections = _format_file_details(data)
+    if file_detail_sections:
+        blocks.append("")
+        blocks.append("#### File-level breakdown")
+        blocks.extend(file_detail_sections)
 
     pretty_json = json.dumps(data, ensure_ascii=False, indent=2)
     blocks.append("")
