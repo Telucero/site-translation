@@ -1,53 +1,16 @@
 name: rose-orchestration
 
 on:
-  push:
-    branches:
-      - main
-      - master
-      - Multi-translation-testing
   workflow_dispatch:
     inputs:
-      base_ref_choice:
-        description: 'Which branch should be treated as "English baseline"? (choose "custom" to type one below)'
+      base_ref:
+        description: 'Which branch/commit should be treated as "English baseline"? (ex: main)'
         required: true
-        default: 'origin/main'
-        type: choice
-        options:
-          - origin/main
-          - main
-          - origin/master
-          - master
-          - origin/english-test
-          - english-test
-          - origin/Multi-translation-testing
-          - Multi-translation-testing
-          - HEAD
-          - custom
-      base_ref_custom:
-        description: 'Optional custom English baseline (used only when choice above is "custom")'
-        required: false
-        default: ''
-      head_ref_choice:
-        description: 'Which branch/commit contains the new content you want translated? (choose "custom" to type one below)'
+        default: 'main'
+      head_ref:
+        description: 'Which branch/commit contains the new content you want translated?'
         required: true
         default: 'HEAD'
-        type: choice
-        options:
-          - HEAD
-          - origin/english-test
-          - english-test
-          - origin/Multi-translation-testing
-          - Multi-translation-testing
-          - origin/Multi-translation
-          - Multi-translation
-          - origin/main
-          - main
-          - custom
-      head_ref_custom:
-        description: 'Optional custom content branch/commit (used only when choice above is "custom")'
-        required: false
-        default: ''
       languages:
         description: 'Two-letter locale codes to translate (separate with spaces, e.g. "es fr pt")'
         required: false
@@ -108,24 +71,8 @@ jobs:
       - name: Determine translation parameters
         id: refs
         shell: bash
-        env:
-          BASE_REF_CHOICE: ${{ github.event_name == 'workflow_dispatch' && inputs.base_ref_choice || '' }}
-          BASE_REF_CUSTOM: ${{ github.event_name == 'workflow_dispatch' && inputs.base_ref_custom || '' }}
-          HEAD_REF_CHOICE: ${{ github.event_name == 'workflow_dispatch' && inputs.head_ref_choice || '' }}
-          HEAD_REF_CUSTOM: ${{ github.event_name == 'workflow_dispatch' && inputs.head_ref_custom || '' }}
         run: |
           DEFAULT_LANGS="${ROSE_LANGUAGES:-es fr pt}"
-          pick_manual_ref() {
-            local choice="$1"
-            local custom="$2"
-            if [[ -z "$choice" ]]; then
-              echo ""
-            elif [[ "$choice" == "custom" ]]; then
-              echo "$custom"
-            else
-              echo "$choice"
-            fi
-          }
           normalize_ref() {
             local ref="$1"
             if [[ -z "$ref" ]]; then
@@ -144,19 +91,9 @@ jobs:
               echo "origin/$ref"
             fi
           }
-          raw_base=""
-          raw_head=""
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            raw_base="$(pick_manual_ref "${BASE_REF_CHOICE}" "${BASE_REF_CUSTOM}")"
-            raw_head="$(pick_manual_ref "${HEAD_REF_CHOICE}" "${HEAD_REF_CUSTOM}")"
-            if [[ -z "$raw_base" ]]; then
-              echo "::warning::No English baseline selected; defaulting to origin/main"
-              raw_base="origin/main"
-            fi
-            if [[ -z "$raw_head" ]]; then
-              echo "::warning::No content branch selected; defaulting to HEAD"
-              raw_head="HEAD"
-            fi
+            raw_base="${{ inputs.base_ref }}"
+            raw_head="${{ inputs.head_ref }}"
             diff_base="$(normalize_ref "$raw_base")"
             diff_head="$(normalize_ref "$raw_head")"
             pr_base="$raw_head"
@@ -174,15 +111,11 @@ jobs:
             diff_head="HEAD"
             pr_base="${branch}"
             langs="$DEFAULT_LANGS"
-            raw_base="$diff_base"
-            raw_head="$diff_head"
           fi
           echo "diff_base=$diff_base" >> "$GITHUB_OUTPUT"
           echo "diff_head=$diff_head" >> "$GITHUB_OUTPUT"
           echo "pr_base=$pr_base" >> "$GITHUB_OUTPUT"
           echo "languages=$langs" >> "$GITHUB_OUTPUT"
-          echo "raw_base=$raw_base" >> "$GITHUB_OUTPUT"
-          echo "raw_head=$raw_head" >> "$GITHUB_OUTPUT"
 
       # 1) Fetch the repo so the pipeline can diff and modify files.
       - name: Checkout repository
@@ -194,8 +127,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
         env:
-          RAW_BASE: ${{ steps.refs.outputs.raw_base }}
-          RAW_HEAD: ${{ steps.refs.outputs.raw_head }}
+          RAW_BASE: ${{ inputs.base_ref }}
+          RAW_HEAD: ${{ inputs.head_ref }}
           DIFF_BASE: ${{ steps.refs.outputs.diff_base }}
           DIFF_HEAD: ${{ steps.refs.outputs.diff_head }}
         run: |
