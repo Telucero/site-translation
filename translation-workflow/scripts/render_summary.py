@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -184,6 +186,42 @@ def _format_file_details(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _encode_hidden_link(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    encoded = base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+    return encoded.rstrip("=")
+
+
+def _format_support_links() -> list[str]:
+    links: list[tuple[str, str]] = []
+    chatbot = _encode_hidden_link(os.getenv("ROSE_CHATBOT_URL"))
+    if chatbot:
+        links.append(("Chatbot assistant", chatbot))
+    form = _encode_hidden_link(os.getenv("ROSE_ESCALATION_FORM_URL"))
+    if form:
+        links.append(("n8n escalation form", form))
+    if not links:
+        return []
+
+    lines: list[str] = []
+    lines.append("#### Support resources")
+    lines.append("Use the snippet below to reveal each hidden link in a trusted shell.")
+    for label, encoded in links:
+        lines.append(f"<details><summary>{label}</summary>")
+        lines.append("")
+        lines.append("```bash")
+        lines.append("python - <<'PY'")
+        lines.append("import base64")
+        lines.append(f'encoded = "{encoded}"')
+        lines.append('padding = (-len(encoded)) % 4')
+        lines.append('print(base64.urlsafe_b64decode(encoded + \"=\" * padding).decode(\"utf-8\"))')
+        lines.append("PY")
+        lines.append("```")
+        lines.append("</details>")
+    return lines
+
+
 def build_markdown(summary_path: Path) -> str:
     data = json.loads(summary_path.read_text(encoding="utf-8"))
     payload_count = data.get("payload_entry_count", 0)
@@ -215,6 +253,11 @@ def build_markdown(summary_path: Path) -> str:
         blocks.append("")
         blocks.append("#### File-level breakdown")
         blocks.extend(file_detail_sections)
+
+    support_links = _format_support_links()
+    if support_links:
+        blocks.append("")
+        blocks.extend(support_links)
 
     pretty_json = json.dumps(data, ensure_ascii=False, indent=2)
     blocks.append("")
