@@ -215,6 +215,7 @@ jobs:
         env:
           ROSE_CHATBOT_URL: ${{ secrets.ROSE_CHATBOT_URL }}
           ROSE_ESCALATION_FORM_URL: ${{ secrets.ROSE_ESCALATION_FORM_URL }}
+          ROSE_SUPPORT_ACCESS_CODE: ${{ secrets.ROSE_SUPPORT_ACCESS_CODE }}
         run: |
           SUMMARY_JSON="translation-workflow/translations/summary_report.json"
           SUMMARY_MD="${{ steps.temp_summary.outputs.dir }}/summary.md"
