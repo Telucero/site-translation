@@ -130,29 +130,26 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
         env:
-          BASE_REF: ${{ steps.refs.outputs.diff_base }}
-          HEAD_REF: ${{ steps.refs.outputs.diff_head }}
+          RAW_BASE: ${{ inputs.base_ref }}
+          RAW_HEAD: ${{ inputs.head_ref }}
+          DIFF_BASE: ${{ steps.refs.outputs.diff_base }}
+          DIFF_HEAD: ${{ steps.refs.outputs.diff_head }}
         run: |
           set -euo pipefail
           fetch_ref() {
-            local ref="$1"
-            if [[ -z "$ref" ]]; then
+            local raw="$1"
+            local normalized="$2"
+            if [[ -z "$raw" || "$raw" == "HEAD" || "$raw" =~ ^[0-9a-f]{7,40}$ ]]; then
               return
             fi
-            if [[ "$ref" == "HEAD" ]]; then
-              return
-            fi
-            if [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
-              return
-            fi
-            if [[ "$ref" == origin/* ]]; then
-              git fetch origin "${ref#origin/}"
+            if [[ "$normalized" == origin/* ]]; then
+              git fetch origin "${normalized#origin/}:${normalized#origin/}"
             else
-              git fetch origin "$ref"
+              git fetch origin "$normalized:$normalized"
             fi
           }
-          fetch_ref "$BASE_REF"
-          fetch_ref "$HEAD_REF"
+          fetch_ref "$RAW_BASE" "$DIFF_BASE"
+          fetch_ref "$RAW_HEAD" "$DIFF_HEAD"
 
       # 2) Install a consistent Python interpreter for all helper scripts.
       - name: Set up Python
