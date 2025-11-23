@@ -1,6 +1,13 @@
 name: rose-orchestration
 
 on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+      - master
+      - Multi-translation-testing
   workflow_dispatch:
     inputs:
       base_ref:
@@ -59,7 +66,7 @@ jobs:
   run-pipeline:
     environment: translations
     needs: guard
-    if: ${{ needs.guard.outputs.allowed == 'true' }}
+    if: ${{ needs.guard.outputs.allowed == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.merged == true) }}
     runs-on: ubuntu-latest
     env:
       N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL_TR }}
@@ -102,6 +109,13 @@ jobs:
             else
               langs="$DEFAULT_LANGS"
             fi
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            raw_base="${{ github.event.pull_request.base.ref }}"
+            raw_head="${{ github.event.pull_request.head.ref }}"
+            diff_base="${{ github.event.pull_request.base.sha }}"
+            diff_head="${{ github.event.pull_request.head.sha }}"
+            pr_base="${{ github.event.pull_request.base.ref }}"
+            langs="$DEFAULT_LANGS"
           else
             branch="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
             diff_base="${{ github.event.before }}"
