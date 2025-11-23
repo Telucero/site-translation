@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -201,7 +202,9 @@ def _format_support_links() -> list[str]:
     form = _encode_hidden_link(os.getenv("ROSE_ESCALATION_FORM_URL"))
     if form:
         links.append(("n8n escalation form", form))
-    if not links:
+    access_code = os.getenv("ROSE_SUPPORT_ACCESS_CODE")
+    code_hash = hashlib.sha256(access_code.encode("utf-8")).hexdigest() if access_code else None
+    if not links or not code_hash:
         return []
 
     lines: list[str] = []
@@ -212,7 +215,11 @@ def _format_support_links() -> list[str]:
         lines.append("")
         lines.append("```bash")
         lines.append("python - <<'PY'")
-        lines.append("import base64")
+        lines.append("import base64, hashlib, getpass")
+        lines.append(f'expected = "{code_hash}"')
+        lines.append("code = getpass.getpass('Access code: ').strip()")
+        lines.append("if hashlib.sha256(code.encode('utf-8')).hexdigest() != expected:")
+        lines.append("    raise SystemExit('Invalid code; contact the translations team if you need access.')")
         lines.append(f'encoded = "{encoded}"')
         lines.append('padding = (-len(encoded)) % 4')
         lines.append('print(base64.urlsafe_b64decode(encoded + \"=\" * padding).decode(\"utf-8\"))')
