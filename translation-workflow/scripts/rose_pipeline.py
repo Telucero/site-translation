@@ -823,6 +823,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
     translations = (
         response_payload.get("translations")
         or response_payload.get("entries")
+        or response_payload.get("payload")
         or response_payload
     )
     if isinstance(translations, str):
@@ -830,6 +831,15 @@ def _run_pipeline(args: argparse.Namespace) -> int:
             translations = json.loads(translations)
         except json.JSONDecodeError as exc:
             raise RuntimeError("n8n payload string could not be decoded as JSON") from exc
+    if isinstance(translations, dict) and "payload" in translations:
+        inner_payload = translations.get("payload")
+        if isinstance(inner_payload, str):
+            try:
+                translations = json.loads(inner_payload)
+            except json.JSONDecodeError as exc:  # pragma: no cover
+                raise RuntimeError("n8n payload string could not be decoded as JSON") from exc
+        elif isinstance(inner_payload, list):
+            translations = inner_payload
     PAYLOAD_PATH.write_text(json.dumps(translations, indent=2, ensure_ascii=False), encoding="utf-8")
     payload_entries = _payload_entries_list(translations)
 
