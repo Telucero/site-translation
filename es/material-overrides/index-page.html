@@ -1,0 +1,160 @@
+{% extends "main.html" %}
+
+{% block styles %}
+	{{ super() }}
+  <link rel="stylesheet" href="{{ 'assets/stylesheets/index-page.css' | url }}">
+{% endblock %}
+
+{% block content %}
+{% macro find_active_page(element, nav) %}
+  {% for nav_item in element %}
+    {% if nav_item.active %}
+      {% if nav_item.is_section %}
+        <!-- continue to find active page -->
+        {{ find_active_page(nav_item.children, nav) }}
+      {% else %}
+        <!-- render subsection content -->
+        {% if nav_item.is_page %}
+          <div class="subsection-wrapper">
+          {% set seen_links = namespace(paths=[]) %}
+          {% set nav_overrides = config.extra.nav_translations if config.extra is defined and config.extra.nav_translations is defined else {} %}
+          {% set overrides = nav_overrides.get(current_lang, []) %}
+          {% for nav_child in element[1:] %}
+            {% set description = "" %}
+            {% set icon = "" %}
+            {% if nav_child.is_section %}
+              {% set subsection_path = nav_child.children[0].url %}
+              {% set description = nav_child.children[0].meta.description %}
+              {% set icon = nav_child.children[0].meta.icon %}
+            {% else %}
+              {% set subsection_path = nav_child.url %}
+              {% if nav_child.meta %}
+                {% set description = nav_child.meta.description %}
+                {% set icon = nav_child.meta.icon %}
+              {% endif %}
+            {% endif %}
+
+            {% set tracked_path = subsection_path %}
+            {% if tracked_path in seen_links.paths %}
+              {% continue %}
+            {% endif %}
+            {% set seen_links.paths = seen_links.paths + [tracked_path] %}
+
+            {% if ".index" in page.url %}
+              {% set subsection_path = "/" + subsection_path %}
+            {% else %}
+              {% set subsection_path = subsection_path|replace(page.url, '') %}
+            {% endif %}
+
+            <div class="card">
+              <a href="{{ subsection_path }}">
+                <div class="card-header">                
+            {% set icon_to_render = icon %}
+            {% set title_to_render = nav_child.title %}
+            {% if nav_child.file and overrides %}
+              {% set file_src = nav_child.file.src_path %}
+              {% if file_src.startswith(current_lang ~ '/') %}
+                {% set normalized_src = file_src[(current_lang|length + 1):] %}
+              {% else %}
+                {% set normalized_src = file_src %}
+              {% endif %}
+              {% for override in overrides %}
+                {% if override.page == normalized_src %}
+                  {% if override.icon %}
+                    {% set icon_to_render = override.icon %}
+                  {% endif %}
+                  {% if override.title %}
+                    {% set title_to_render = override.title %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+
+            {% if icon_to_render %}
+              {% set icon_parts = icon_to_render.split('-', 1) %}
+              {% set icon_path = icon_parts[0] + '/' + icon_parts[1] if icon_parts|length > 1 else icon_parts[0] %}
+              {% include ".icons/" + icon_path + ".svg" %}      
+            {% endif %}
+                  <h2 class="title">{{ title_to_render }}</h2> 
+                </div>
+                {% if not description == "" %}
+                  <p class="description">{{ description }}</p>
+                {% else %}
+                  {% if nav_child.is_link %}
+                    {% if '#' in nav_child.url %}
+                      {% set nav_item_url = nav_child.url.split('#')[0] %}
+                    {% else %}
+                      {% set nav_item_url = nav_child.url %}
+                    {% endif %}
+
+                    {% if nav_item_url.startswith('/') %}
+                      {% set nav_item_url = nav_item_url[1:] %}
+                    {% endif %}
+
+                    {% for nav_section_child in nav.children %}
+                      {{ find_desc_for_linked_pages(nav_section_child, nav_item_url, description) }}
+                    {% endfor %}
+                  {% endif %}
+                {% endif %}
+              </a>    
+            </div>
+          {% endfor %}
+          </div>
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+
+  {% set most_nested_active_element = None %}
+  {% if element.active == True %}
+    {{ element }}
+    {% set most_nested_active_element = element %}
+  {% endif %}
+
+  {% if element.active and element.children %}
+    {% for child in element.children %}
+      {% set nested_active_element = find_active_page(child) %}
+      {% if nested_active_element != none %}
+        {% set most_nested_active_element = nested_active_element %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+{% macro find_desc_for_linked_pages(nav, nav_item_url, description) %}
+    {% if nav.is_section %}
+      {% for nav_item in nav.children %}
+        {% if nav_item.is_page and nav_item.url in nav_item_url %}
+          {% if nav_item.url == nav_item_url %}
+            <p class="description">{{ nav_item.meta.description }}</p>
+            {% set description = nav_item.meta.description %}
+          {% endif %}
+        {% endif %}
+        {% if description == "" %}
+          {{ find_desc_for_linked_pages(nav_item, nav_item_url, description) }}
+        {% endif %}
+      {% endfor %}     
+    {% endif %}
+{% endmacro %}
+
+{% set insert_marker = ':::INSERT_GENERATED_CARDS:::' %}
+{% if insert_marker in page.content %}
+  {% set parts = page.content.split(insert_marker) %}
+  {% set dynamic_html %}
+    <div class="subsection-page">
+      {% if nav|length > 1 %}
+        {% for nav_item in nav %}
+          {% if nav_item.is_section and nav_item.active %}
+            {{ find_active_page(nav_item.children, nav_item) }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+  {% endset %}
+  {% set modified_content = parts[0] | safe + (dynamic_html | safe) + parts[1] | safe %}
+  {{ modified_content | safe }}
+{% else %}
+  {{ page.content | safe }}
+{% endif %}
+
+{% endblock %}
