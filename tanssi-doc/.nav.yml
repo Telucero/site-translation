@@ -1,9 +1,0 @@
-nav:
-  - index.md
-  - builders
-  - node-operators
-  - learn
-  - ai-resources
-  - About:
-    - 'About Tanssi': 'https://www.tanssi.network/'
-    - 'Tanssi TestNet': 'https://apps.tanssi.network/create'

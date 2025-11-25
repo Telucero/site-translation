@@ -1,6 +1,0 @@
-title: TestNet
-hide: false
-nav:
-  - index.md
-  - 'Dancelight': 'dancelight.md'
-  - 'Demo EVM Network': 'demo-evm-network.md'
