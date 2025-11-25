@@ -40,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       allowed: ${{ steps.permission_check.outputs.allowed }}
+      merged_by_allowed: ${{ steps.merged_actor_check.outputs.allowed }}
     steps:
       - name: Verify maintainer permissions
         id: permission_check
@@ -66,14 +67,17 @@ jobs:
   run-pipeline:
     environment: translations
     needs: guard
-    if: ${{ needs.guard.outputs.allowed == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.merged == true) }}
+    if: ${{ needs.guard.outputs.allowed == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.merged == true && needs.guard.outputs.merged_by_allowed == 'true')) }}
     runs-on: ubuntu-latest
     env:
       N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL_TR }}
+      ROSE_N8N_SENDING_TOKEN: ${{ secrets.N8N_SENDING_TOKEN || '' }}
+      ROSE_N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN || '' }}
+      ROSE_N8N_ALLOWED_HOST: ${{ vars.N8N_ALLOWED_HOST || '' }}
       ROSE_INCLUDE_FILES: ${{ github.event_name == 'workflow_dispatch' && inputs.file_filter || '' }}
       ROSE_INCLUDE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.include_full || '' }}
       ROSE_LANGUAGES: ${{ vars.ROSE_LANGUAGES || 'es fr pt' }}
-      ROSE_TRANSLATION_BRANCH: rose/translations/${{ github.run_id }}
+      ROSE_TRANSLATION_BRANCH: rose/translations
     steps:
       - name: Determine translation parameters
         id: refs
@@ -301,3 +305,26 @@ jobs:
               echo "- No translation changes were committed during this run."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify merged-by permissions
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true }}
+        id: merged_actor_check
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const mergedBy = context.payload.pull_request.merged_by?.login;
+            if (!mergedBy) {
+              core.setOutput('allowed', 'false');
+              core.info('Pull request merge has no merged_by; treating as untrusted.');
+              return;
+            }
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: mergedBy,
+            });
+            const permission = (data && data.permission) ? data.permission : 'none';
+            const allowedPermissions = new Set(['admin', 'maintain']);
+            const allowed = allowedPermissions.has(permission) ? 'true' : 'false';
+            core.info(`Merged-by actor ${mergedBy} has permission level: ${permission}`);
+            core.setOutput('allowed', allowed);
