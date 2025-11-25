@@ -65,6 +65,22 @@ def _debug(message: str) -> None:
     print(f"[rose][debug] {message}")
 
 
+def _strip_code_fence(text: str) -> str:
+    if not text:
+        return text
+    stripped = text.strip()
+    if stripped.startswith("```") and stripped.endswith("```") and len(stripped) >= 6:
+        lines = stripped.splitlines()
+        if lines:
+            fence_lang = lines[0].strip()
+            if fence_lang.startswith("```"):
+                lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        return "\n".join(lines).strip()
+    return text
+
+
 def _read_lines(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines()
 
@@ -851,6 +867,10 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                 raise RuntimeError("n8n payload string could not be decoded as JSON") from exc
         elif isinstance(inner_payload, list):
             translations = inner_payload
+        elif isinstance(inner_payload, dict):
+            translations = inner_payload
+    if isinstance(translations, dict) and "comment" in translations:
+        translations = translations["comment"]
     if isinstance(translations, dict) and "jobs" in translations:
         translations = translations["jobs"]
     if isinstance(translations, list):
@@ -870,6 +890,32 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                     flattened.extend(job for job in jobs if isinstance(job, dict))
             if flattened:
                 translations = flattened
+        elif translations and all(
+            isinstance(item, dict) and "comment" in item for item in translations
+        ):
+            flattened: list[dict[str, Any]] = []
+            for item in translations:
+                comments = item.get("comment")
+                if isinstance(comments, list):
+                    flattened.extend(comment for comment in comments if isinstance(comment, dict))
+            if flattened:
+                translations = flattened
+    if isinstance(translations, list):
+        for entry in translations:
+            if (
+                isinstance(entry, dict)
+                and entry.get("target_language")
+                and not entry.get("target_languages")
+            ):
+                entry["target_languages"] = [entry["target_language"]]
+            if (
+                isinstance(entry, dict)
+                and entry.get("target_languages") in (None, [], "")
+                and entry.get("kind") == "file"
+            ):
+                entry["target_languages"] = list(args.languages)
+            if isinstance(entry, dict) and isinstance(entry.get("translated_content"), str):
+                entry["translated_content"] = _strip_code_fence(entry["translated_content"])
     PAYLOAD_PATH.write_text(json.dumps(translations, indent=2, ensure_ascii=False), encoding="utf-8")
     payload_entries = _payload_entries_list(translations)
 
