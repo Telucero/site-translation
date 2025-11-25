@@ -851,6 +851,25 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                 raise RuntimeError("n8n payload string could not be decoded as JSON") from exc
         elif isinstance(inner_payload, list):
             translations = inner_payload
+    if isinstance(translations, dict) and "jobs" in translations:
+        translations = translations["jobs"]
+    if isinstance(translations, list):
+        if (
+            len(translations) == 1
+            and isinstance(translations[0], dict)
+            and "jobs" in translations[0]
+        ):
+            translations = translations[0]["jobs"]
+        elif translations and all(
+            isinstance(item, dict) and "jobs" in item for item in translations
+        ):
+            flattened: list[dict[str, Any]] = []
+            for item in translations:
+                jobs = item.get("jobs")
+                if isinstance(jobs, list):
+                    flattened.extend(job for job in jobs if isinstance(job, dict))
+            if flattened:
+                translations = flattened
     PAYLOAD_PATH.write_text(json.dumps(translations, indent=2, ensure_ascii=False), encoding="utf-8")
     payload_entries = _payload_entries_list(translations)
 
