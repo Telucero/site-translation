@@ -812,13 +812,24 @@ def _run_pipeline(args: argparse.Namespace) -> int:
         return 1
     response = _post_json(args.n8n_webhook, n8n_payload, payload_json)
 
+    response_payload: Any = response
     if isinstance(response, list):
-        if not response:
-            print("n8n webhook returned an empty list; exiting.")
-            return 1
-        response_payload = response[0]
-    else:
-        response_payload = response
+        response_payload = response[0] if response else {}
+    elif isinstance(response, str):
+        try:
+            response_payload = json.loads(response)
+        except json.JSONDecodeError as exc:  # pragma: no cover
+            raise RuntimeError("Unable to decode n8n response string") from exc
+
+    if isinstance(response_payload, dict) and "object" in response_payload:
+        obj = response_payload["object"]
+        if isinstance(obj, str):
+            try:
+                response_payload = json.loads(obj)
+            except json.JSONDecodeError as exc:  # pragma: no cover
+                raise RuntimeError("Unable to decode n8n object payload") from exc
+        else:
+            response_payload = obj
 
     translations = (
         response_payload.get("translations")
