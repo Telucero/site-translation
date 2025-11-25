@@ -825,6 +825,11 @@ def _run_pipeline(args: argparse.Namespace) -> int:
         or response_payload.get("entries")
         or response_payload
     )
+    if isinstance(translations, str):
+        try:
+            translations = json.loads(translations)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("n8n payload string could not be decoded as JSON") from exc
     PAYLOAD_PATH.write_text(json.dumps(translations, indent=2, ensure_ascii=False), encoding="utf-8")
     payload_entries = _payload_entries_list(translations)
 
