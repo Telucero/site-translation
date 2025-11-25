@@ -1,6 +1,0 @@
-title: Atualizar seu nó
-hide: false
-nav:
-  - index.md
-  - 'Usando Docker': upgrade-docker.md
-  - 'Usando systemd': upgrade-systemd.md
