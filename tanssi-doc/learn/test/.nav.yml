@@ -1,0 +1,4 @@
+nav:
+  - Merge Tests:
+      - Overview: learn/merge-tests/index.md
+      - Instructions: learn/merge-tests/steps.md
