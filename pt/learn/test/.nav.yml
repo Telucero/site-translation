@@ -1,0 +1,6 @@
+nav:
+  - Visão geral: index.md
+  - Página de exemplo: sample-page.md
+  - Testes de Merge:
+      - Visão geral: learn/merge-tests/index.md
+      - Instruções: learn/merge-tests/steps.md

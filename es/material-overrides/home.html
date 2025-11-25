@@ -1,0 +1,165 @@
+{% extends "main.html" %}
+
+{% macro _noop(key, lang_code=None) -%}{{ key }}{%- endmacro %}
+{% set translator = _noop %}
+{% set translator_takes_lang = false %}
+{% if macros is defined and macros.trans is defined %}
+  {% set translator = macros.trans %}
+  {% set translator_takes_lang = true %}
+{% elif trans is defined %}
+  {% set translator = trans %}
+  {% set translator_takes_lang = true %}
+{% elif lang is defined %}
+  {% set translator = lang.t %}
+{% endif %}
+{% set current_lang = 'en' %}
+{% if page is defined and page.lang %}
+  {% set current_lang = page.lang %}
+{% elif config.theme.language %}
+  {% set current_lang = config.theme.language %}
+{% endif %}
+
+{% macro t(key) -%}
+  {%- if translator_takes_lang -%}
+    {{ translator(key, current_lang) }}
+  {%- else -%}
+    {{ translator(key) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% block htmltitle %}
+  {%- if page.is_homepage -%}
+    <title>{{ t('home.meta.title') }}</title>
+  {%- endif -%}
+{% endblock %}
+
+{% block styles %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ 'assets/stylesheets/home.css' | url }}">
+{% endblock %}
+
+{% block content %}
+  {% set hero_cards = [
+    {
+      "title": t('home.hero.cards.launch.title'),
+      "description": t('home.hero.cards.launch.description'),
+      "link": "/builders/build/",
+      "button": t('home.hero.cards.launch.button')
+    },
+    {
+      "title": t('home.hero.cards.evm.title'),
+      "description": t('home.hero.cards.evm.description'),
+      "link": "/builders/toolkit/ethereum-api/",
+      "button": t('home.hero.cards.evm.button')
+    },
+    {
+      "title": t('home.hero.cards.learn.title'),
+      "description": t('home.hero.cards.learn.description'),
+      "link": "/learn/tanssi/",
+      "button": t('home.hero.cards.learn.button')
+    }
+  ] %}
+  {% set feature_column_left = [
+    {
+      "background": "one",
+      "badge": t('home.feature.cards.one.badge'),
+      "title": t('home.feature.cards.one.title'),
+      "link": "https://www.tanssi.foundation/tanssi-grants-program/tanssi-grants-application",
+      "arrow_alt": t('home.feature.cards.one.arrow_alt')
+    }
+  ] %}
+  {% set feature_column_right = [
+    {
+      "background": "two",
+      "badge": t('home.feature.cards.two.badge'),
+      "title": t('home.feature.cards.two.title'),
+      "link": "https://apps.tanssi.network/",
+      "arrow_alt": t('home.feature.cards.two.arrow_alt')
+    },
+    {
+      "background": "three",
+      "badge": t('home.feature.cards.three.badge'),
+      "title": t('home.feature.cards.three.title'),
+      "link": "https://www.tanssi.network/blog",
+      "arrow_alt": t('home.feature.cards.three.arrow_alt')
+    }
+  ] %}
+  {% set community_buttons = [
+    {
+      "style": "primary",
+      "label": t('home.community.buttons.discord'),
+      "link": "https://discord.com/invite/tanssi"
+    },
+    {
+      "style": "secondary",
+      "label": t('home.community.buttons.subscribe'),
+      "link": "https://www.tanssi.network/community/newsletter"
+    }
+  ] %}
+  <div class="home md-typeset">
+    <div class="hero-section">
+      <video autoplay muted loop class="background-video">
+        <source src="{{ 'assets/images/home-background.mp4' | url }}" type="video/mp4">
+        {{ t('home.hero.video_fallback') }}
+      </video>
+      <div class="hero-content">
+        <h1>{{ t('home.hero.title_html') | safe }}</h1>
+        <h2>{{ t('home.hero.subtitle') }}</h2>
+        <div class="hero-grid">
+          {% for card in hero_cards %}
+            <div class="hero-card">
+              <h3>{{ card.title }}</h3>
+              <p>{{ card.description }}</p>
+              <a href="{{ card.link | url }}">
+                <button class="md-button">{{ card.button }}</button>
+              </a>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="feature-section">
+      <div class="column">
+        <h2>{{ t('home.feature.heading.prefix') }} <span class="highlight">{{ t('home.feature.heading.accent') }}</span></h2>
+        <p>{{ t('home.feature.description') }}</p>
+      </div>
+      <div class="feature-grid">
+        <div class="column">
+          {% for card in feature_column_left %}
+            <div class="feature-card-background {{ card.background }}">
+              <a class="feature-card" href="{{ card.link }}" target="_blank">
+                <div class="feature-badge">{{ card.badge }}</div>
+                <h3>{{ card.title }}</h3>
+                <img src="{{ 'assets/images/arrow.webp' | url }}" alt="{{ card.arrow_alt }}"/>
+              </a>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="column">
+          {% for card in feature_column_right %}
+            <div class="feature-card-background {{ card.background }}">
+              <a class="feature-card" href="{{ card.link }}" target="_blank">
+                <div class="feature-badge">{{ card.badge }}</div>
+                <h3>{{ card.title }}</h3>
+                <img src="{{ 'assets/images/arrow.webp' | url }}" alt="{{ card.arrow_alt }}"/>
+              </a>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="section-separator">
+      <img src="{{ 'assets/images/feature-background.webp' | url }}" alt="{{ t('home.feature.separator_alt') }}"/>
+    </div>
+    <div class="community-section">
+      <h2>{{ t('home.community.heading.prefix') }} <span class="highlight">{{ t('home.community.heading.accent') }}</span> {{ t('home.community.heading.suffix') }}</h2>
+      <div class="community-buttons">
+        {% for button in community_buttons %}
+          <a href="{{ button.link }}" target="_blank">
+            <button class="md-button {{ button.style }}">{{ button.label }}</button>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

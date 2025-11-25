@@ -1,0 +1,6 @@
+nav:
+  - Overview: index.md
+  - Sample Page: sample-page.md
+  - Pruebas de fusión:
+      - Overview: learn/merge-tests/index.md
+      - Instructions: learn/merge-tests/steps.md

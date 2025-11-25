@@ -1,0 +1,56 @@
+home:
+  meta:
+    title: home meta title
+  hero:
+    cards:
+      launch:
+        title: home hero cards launch title
+        description: home hero cards launch description
+        button: home hero cards launch button
+      evm:
+        title: home hero cards evm title
+        description: home hero cards evm description
+        button: home hero cards evm button
+      learn:
+        title: home hero cards learn title
+        description: home hero cards learn description
+        button: home hero cards learn button
+    video_fallback: home hero video_fallback
+    title_html: home hero title_html
+    subtitle: home hero subtitle
+  feature:
+    cards:
+      one:
+        badge: home feature cards one badge
+        title: home feature cards one title
+        arrow_alt: home feature cards one arrow_alt
+      two:
+        badge: home feature cards two badge
+        title: home feature cards two title
+        arrow_alt: home feature cards two arrow_alt
+      three:
+        badge: home feature cards three badge
+        title: home feature cards three title
+        arrow_alt: home feature cards three arrow_alt
+    heading:
+      prefix: home feature heading prefix
+      accent: home feature heading accent
+    description: home feature description
+    separator_alt: home feature separator_alt
+  community:
+    buttons:
+      discord: home community buttons discord
+      subscribe: home community buttons subscribe
+    heading:
+      prefix: home community heading prefix
+      accent: home community heading accent
+      suffix: home community heading suffix
+action:
+  edit: action edit
+  view: action view
+footer:
+  privacy_policy: footer privacy_policy
+  terms_of_use: footer terms_of_use
+  material_attribution_html: footer material_attribution_html
+  llms_full_label: footer llms_full_label
+  made_with_html: footer made_with_html

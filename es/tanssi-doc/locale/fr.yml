@@ -1,0 +1,77 @@
+meta:
+  home_title: Documentation du réseau Tanssi
+footer:
+  llms_full_label: llms-full.txt
+  made_with_html: Créé avec 🩵 par <a href="https://papermoon.io/" target="_blank">PaperMoon</a>
+  privacy_policy: Politique de confidentialité
+  terms_of_use: Conditions d'utilisation
+  material_attribution_html: Créé avec <a href="https://squidfunk.github.io/mkdocs-material/"
+    target="_blank" rel="noopener">Material for MkDocs</a>
+error:
+  404_title: 404 – Introuvable
+home:
+  meta:
+    title: Tanssi Docs
+  hero:
+    video_fallback: Votre navigateur ne prend pas en charge la balise vidéo.
+    title_html: Site Tanssi <span class="shadow">&lt;Dev&gt;</span>
+    subtitle: Créez, lancez et faites évoluer des réseaux symbiotiques plus rapidement
+      grâce à l'infrastructure, aux outils et aux intégrations de Tanssi.
+    cards:
+      launch:
+        title: Lancer un réseau propulsé par Tanssi
+        description: Obtenez des outils et des guides pour lancer votre réseau en
+          quelques minutes.
+        button: Commencer
+      evm:
+        title: Développer avec des outils EVM
+        description: Exploitez les outils EVM populaires pour accélérer votre développement.
+        button: En savoir plus
+      learn:
+        title: Explorer des concepts techniques
+        description: Découvrez les fonctionnalités, les services et la sécurité de
+          Tanssi à travers Symbiotic.
+        button: En savoir plus
+  feature:
+    heading:
+      prefix: Le guichet unique de Tanssi
+      accent: Constructeurs
+    description: 'Découvrez davantage de moyens d''interagir avec l''écosystème Tanssi
+      : accédez à du financement, à des ressources et à de la visibilité pour votre
+      projet.'
+    cards:
+      one:
+        badge: Écosystème
+        title: Demander une subvention
+        arrow_alt: Aller à la page Demander une subvention
+      two:
+        badge: Commencer à construire
+        title: Visiter le TestNet
+        arrow_alt: Aller à la page du TestNet
+      three:
+        badge: Perspectives sectorielles
+        title: Actualités de l'écosystème
+        arrow_alt: Aller à la page Actualités de l'écosystème
+    separator_alt: Motif décoratif multicolore de Tanssi
+  community:
+    heading:
+      prefix: Rejoignez la communauté
+      accent: Dev
+      suffix: de Tanssi
+    buttons:
+      discord: Rejoindre Discord
+      subscribe: S'abonner
+action:
+  edit: Modifier cette page
+  view: Voir la source
+feedback:
+  title: Cette page vous a-t-elle été utile ?
+  ratings:
+    helpful:
+      name: Cette page a été utile
+      note: Merci pour votre retour !
+    unhelpful:
+      name: Cette page pourrait être améliorée
+      note: Merci pour votre retour ! Aidez-nous à améliorer cette page en envoyant
+        <a href="https://github.com/moondance-labs/tanssi-docs/issues/new/?title=[Feedback]+{title}+-+{url}"
+        target="_blank" rel="noopener">des commentaires supplémentaires</a>.
