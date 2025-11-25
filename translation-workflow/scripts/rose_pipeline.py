@@ -49,6 +49,7 @@ EXCLUDED_PREFIXES = (
     "i18n/",
     "images/",
     "scripts/",
+    "locale/",
 )
 EXCLUDED_EXACT = {
     ".github",
@@ -56,6 +57,7 @@ EXCLUDED_EXACT = {
     "i18n",
     "images",
     "scripts",
+    "locale",
     "readme.md",
     "variables.yml",
 }
