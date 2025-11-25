@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       allowed: ${{ steps.permission_check.outputs.allowed }}
-      merged_by_allowed: ${{ steps.merged_actor_check.outputs.allowed }}
+      merged_by_allowed: ${{ steps.merged_actor_check.outputs.allowed || steps.permission_check.outputs.allowed }}
     steps:
       - name: Verify maintainer permissions
         id: permission_check
